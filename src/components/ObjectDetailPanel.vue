@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as s3 from "../api/s3";
 import { useDownloads } from "../store/useDownloads";
 import { errorMessage, type ObjectItem, type ObjectMeta } from "../types";
 import { formatDate, formatSize } from "../utils/format";
+import CopyableValue from "./CopyableValue.vue";
 
 const props = defineProps<{ bucket: string; object: ObjectItem }>();
 defineEmits<{ close: [] }>();
@@ -18,7 +18,6 @@ const httpsUrl = ref<string>("");
 const presigned = ref<string | null>(null);
 const busy = ref(false);
 const error = ref<string | null>(null);
-const flash = ref<string | null>(null);
 
 async function loadDetails() {
   meta.value = null;
@@ -35,12 +34,6 @@ async function loadDetails() {
   } catch (e) {
     error.value = errorMessage(e);
   }
-}
-
-async function copy(text: string, label: string) {
-  await writeText(text);
-  flash.value = `${label} copied`;
-  window.setTimeout(() => (flash.value = null), 1500);
 }
 
 async function generatePresigned() {
@@ -106,34 +99,12 @@ onMounted(loadDetails);
       <div class="space-y-2">
         <div>
           <span class="mb-1 block text-xs font-medium text-slate-500">s3:// URI</span>
-          <div class="flex gap-1">
-            <code
-              class="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1 text-xs dark:bg-night-800"
-              >{{ s3Uri }}</code
-            >
-            <button
-              class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
-              @click="copy(s3Uri, 'S3 URI')"
-            >
-              Copy
-            </button>
-          </div>
+          <CopyableValue :value="s3Uri" />
         </div>
 
         <div>
           <span class="mb-1 block text-xs font-medium text-slate-500">HTTPS URL</span>
-          <div class="flex gap-1">
-            <code
-              class="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1 text-xs dark:bg-night-800"
-              >{{ httpsUrl }}</code
-            >
-            <button
-              class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
-              @click="copy(httpsUrl, 'HTTPS URL')"
-            >
-              Copy
-            </button>
-          </div>
+          <CopyableValue :value="httpsUrl" />
         </div>
       </div>
 
@@ -151,25 +122,14 @@ onMounted(loadDetails);
             {{ busy ? "…" : "Generate" }}
           </button>
         </div>
-        <div v-if="presigned" class="flex gap-1">
-          <code
-            class="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1 text-xs dark:bg-night-800"
-            :title="presigned"
-            >{{ presigned }}</code
-          >
+        <CopyableValue v-if="presigned" :value="presigned">
           <button
-            class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
-            @click="copy(presigned!, 'Presigned URL')"
-          >
-            Copy
-          </button>
-          <button
-            class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
+            class="shrink-0 rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
             @click="openUrl(presigned!)"
           >
             Open
           </button>
-        </div>
+        </CopyableValue>
       </div>
 
       <div
@@ -188,12 +148,6 @@ onMounted(loadDetails);
       >
         ⬇ Download
       </button>
-      <p
-        v-if="flash"
-        class="mt-2 text-center text-xs text-emerald-600 dark:text-emerald-400"
-      >
-        {{ flash }}
-      </p>
     </footer>
   </aside>
 </template>

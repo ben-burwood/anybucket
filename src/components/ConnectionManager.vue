@@ -60,6 +60,7 @@ const emptyForm = (): ConnectionInput => ({
 const form = reactive<ConnectionInput>(emptyForm());
 const editing = ref(false);
 const saving = ref(false);
+const testing = ref(false);
 const formError = ref<string | null>(null);
 const testStatus = ref<{ ok: boolean; message: string } | null>(null);
 
@@ -90,6 +91,7 @@ function editConnection(c: Connection) {
 async function testConnection() {
   testStatus.value = null;
   formError.value = null;
+  testing.value = true;
   try {
     const count = await api.testConnection(payload());
     testStatus.value = {
@@ -98,6 +100,8 @@ async function testConnection() {
     };
   } catch (e) {
     testStatus.value = { ok: false, message: errorMessage(e) };
+  } finally {
+    testing.value = false;
   }
 }
 
@@ -324,10 +328,31 @@ onMounted(() => conns.refresh());
           </button>
           <button
             type="button"
-            class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
+            :disabled="testing"
+            class="flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
             @click="testConnection"
           >
-            Test
+            <svg
+              v-if="testing"
+              class="h-3.5 w-3.5 animate-spin text-slate-400"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              />
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 0 1 8-8V0C5.4 0 0 5.4 0 12h4Z"
+              />
+            </svg>
+            {{ testing ? "Testing…" : "Test" }}
           </button>
           <button
             v-if="editing"

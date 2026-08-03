@@ -18,7 +18,7 @@ import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 
 const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
-const { state, load, applyFilter, loadMore } = useBrowser();
+const { state, load, applyFilter, refresh, loadMore } = useBrowser();
 
 const { isDark } = useTheme();
 
@@ -136,6 +136,21 @@ function navigateTo(prefix: string) {
 
 const crumbs = computed(() => breadcrumbs(props.prefix));
 
+// Message shown inside the grid's built-in "no rows" overlay, so an empty
+// result doesn't unmount the table (no component flashing).
+function escapeHtml(s: string): string {
+  return s.replace(
+    /[&<>"]/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string,
+  );
+}
+const noRowsTemplate = computed(() =>
+  state.filter
+    ? `<span class="text-sm text-slate-400">No matches for &ldquo;${escapeHtml(state.filter)}&rdquo;.</span>`
+    : `<span class="text-sm text-slate-400">This location is empty.</span>`,
+);
+
 watch(
   () => [props.bucket, props.prefix] as const,
   ([bucket, prefix]) => {
@@ -195,7 +210,7 @@ watch(
 
       <!-- Prefix filter (above the grid, aligned over the Name column) -->
       <div
-        class="border-b border-slate-200 px-3 py-1.5 dark:border-night-800"
+        class="flex items-center gap-2 border-b border-slate-200 px-3 py-1.5 dark:border-night-800"
       >
         <div class="relative w-72 max-w-full">
           <input
@@ -217,24 +232,34 @@ watch(
             ✕
           </button>
         </div>
+
+        <button
+          class="ml-auto flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
+          title="Refresh"
+          :disabled="state.loading"
+          @click="refresh"
+        >
+          <svg
+            class="h-3.5 w-3.5"
+            :class="{ 'animate-spin': state.loading }"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M15.312 5.312A6.5 6.5 0 0 0 4.2 8.2a.75.75 0 0 1-1.45-.38 8 8 0 0 1 13.66-3.57l.84-.84A.5.5 0 0 1 18 3.76v3.49a.5.5 0 0 1-.5.5h-3.49a.5.5 0 0 1-.354-.853l1.156-1.156ZM4.688 14.688A6.5 6.5 0 0 0 15.8 11.8a.75.75 0 0 1 1.45.38 8 8 0 0 1-13.66 3.57l-.84.84A.5.5 0 0 1 2 16.24v-3.49a.5.5 0 0 1 .5-.5h3.49a.5.5 0 0 1 .354.853l-1.156 1.156Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          Refresh
+        </button>
       </div>
 
-      <!-- States -->
-      <div v-if="state.loading" class="p-8 text-center text-sm text-slate-400">
-        Loading…
-      </div>
       <div
-        v-else-if="state.error"
+        v-if="state.error"
         class="m-4 rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300"
       >
         {{ state.error }}
-      </div>
-      <div
-        v-else-if="rowData.length === 0"
-        class="p-8 text-center text-sm text-slate-400"
-      >
-        <template v-if="state.filter">No matches for “{{ state.filter }}”.</template>
-        <template v-else>This location is empty.</template>
       </div>
 
       <!-- Grid -->
@@ -246,6 +271,8 @@ watch(
           :defaultColDef="defaultColDef"
           :rowData="rowData"
           :animateRows="false"
+          :loading="state.loading"
+          :overlayNoRowsTemplate="noRowsTemplate"
           rowSelection="single"
           @row-clicked="onRowClicked"
         />

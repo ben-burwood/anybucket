@@ -66,6 +66,11 @@ export function useBrowser() {
     await fetchFirstPage();
   }
 
+  /** Re-fetch the current folder, preserving the active filter. */
+  async function refresh(): Promise<void> {
+    await fetchFirstPage();
+  }
+
   async function loadMore(): Promise<void> {
     const current = state.listing;
     if (!current?.nextToken || state.loadingMore) return;
@@ -87,7 +92,7 @@ export function useBrowser() {
     }
   }
 
-  return { state, load, applyFilter, loadMore };
+  return { state, load, applyFilter, refresh, loadMore };
 }
 
 /** Build breadcrumb segments from a `logs/2026/` style prefix. */
