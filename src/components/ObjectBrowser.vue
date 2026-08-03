@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { AgGridVue } from "ag-grid-vue3";
 import {
+  colorSchemeDark,
+  colorSchemeLight,
   themeQuartz,
   type ColDef,
   type RowClickedEvent,
 } from "ag-grid-community";
 import { breadcrumbs, parentPrefix, useBrowser } from "../store/useBrowser";
+import { useTheme } from "../store/useTheme";
 import type { ObjectItem } from "../types";
 import { fileType, formatDate, formatSize } from "../utils/format";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
@@ -16,10 +20,24 @@ const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
 const { state, load, loadMore } = useBrowser();
 
-const selected = ref<ObjectItem | null>(null);
+const { isDark } = useTheme();
 
-// ag-grid theme via the JS Theming API (no external CSS → CSP-safe).
-const theme = themeQuartz;
+const selected = ref<ObjectItem | null>(null);
+const uriCopied = ref(false);
+
+// ag-grid theme via the JS Theming API (no external CSS → CSP-safe), with an
+// emerald accent and a colour scheme that follows the app's light/dark mode.
+const gridBase = themeQuartz.withParams({ accentColor: "#059669" });
+const theme = computed(() =>
+  gridBase.withPart(isDark.value ? colorSchemeDark : colorSchemeLight),
+);
+
+/** Copy the `s3://bucket/prefix` URI of the current directory. */
+async function copyCurrentUri() {
+  await writeText(`s3://${props.bucket}/${props.prefix}`);
+  uriCopied.value = true;
+  window.setTimeout(() => (uriCopied.value = false), 1500);
+}
 
 interface Row {
   kind: "folder" | "file";
@@ -121,7 +139,7 @@ watch(
     <div class="flex min-w-0 flex-1 flex-col">
       <!-- Breadcrumb -->
       <div
-        class="flex items-center gap-1 border-b border-slate-200 px-4 py-2 text-sm dark:border-slate-800"
+        class="flex items-center gap-1 border-b border-slate-200 px-4 py-2 text-sm dark:border-night-800"
       >
         <RouterLink
           to="/"
@@ -145,8 +163,15 @@ watch(
 
         <div class="ml-auto flex items-center gap-2">
           <button
+            class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
+            :title="`Copy s3://${bucket}/${prefix}`"
+            @click="copyCurrentUri"
+          >
+            {{ uriCopied ? "Copied ✓" : "Copy URI" }}
+          </button>
+          <button
             v-if="prefix"
-            class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
             @click="navigateTo(parentPrefix(prefix))"
           >
             ↑ Up
@@ -188,10 +213,10 @@ watch(
       <!-- Load more -->
       <div
         v-if="state.listing?.nextToken"
-        class="border-t border-slate-200 p-2 text-center dark:border-slate-800"
+        class="border-t border-slate-200 p-2 text-center dark:border-night-800"
       >
         <button
-          class="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+          class="rounded-md border border-slate-200 px-3 py-1 text-xs font-medium hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
           :disabled="state.loadingMore"
           @click="loadMore"
         >

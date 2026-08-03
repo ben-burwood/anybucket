@@ -143,7 +143,7 @@ onMounted(() => conns.refresh());
       <h1 class="mb-4 text-lg font-semibold">Connections</h1>
       <p
         v-if="conns.state.connections.length === 0"
-        class="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-400 dark:border-slate-700"
+        class="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-400 dark:border-night-700"
       >
         No connections yet. Add one on the right.
       </p>
@@ -155,7 +155,7 @@ onMounted(() => conns.refresh());
           :class="
             conns.state.active?.id === c.id
               ? 'border-emerald-400 bg-emerald-50/50 dark:border-emerald-600 dark:bg-emerald-950/30'
-              : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'
+              : 'border-slate-200 bg-white dark:border-night-800 dark:bg-night-900'
           "
         >
           <div class="flex items-start justify-between gap-2">
@@ -177,13 +177,13 @@ onMounted(() => conns.refresh());
             <div class="flex shrink-0 gap-1 text-xs">
               <button
                 v-if="conns.state.active?.id !== c.id"
-                class="rounded border border-slate-200 px-2 py-1 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                class="rounded border border-slate-200 px-2 py-1 hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
                 @click="activate(c)"
               >
                 Use
               </button>
               <button
-                class="rounded border border-slate-200 px-2 py-1 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                class="rounded border border-slate-200 px-2 py-1 hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
                 @click="editConnection(c)"
               >
                 Edit
@@ -218,7 +218,7 @@ onMounted(() => conns.refresh());
               :class="
                 provider === p.id
                   ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-500 dark:bg-emerald-950/40 dark:text-emerald-300'
-                  : 'border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
+                  : 'border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800'
               "
               @click="selectProvider(p.id)"
             >
@@ -233,7 +233,7 @@ onMounted(() => conns.refresh());
             v-model="form.name"
             required
             placeholder="Local MinIO"
-            class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-night-700 dark:bg-night-900"
           />
         </label>
 
@@ -245,7 +245,7 @@ onMounted(() => conns.refresh());
             v-model="form.endpointUrl"
             :required="preset.showEndpoint"
             :placeholder="preset.endpointPlaceholder"
-            class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-night-700 dark:bg-night-900"
           />
         </label>
 
@@ -258,7 +258,7 @@ onMounted(() => conns.refresh());
               v-model="form.region"
               required
               placeholder="us-east-1"
-              class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+              class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-night-700 dark:bg-night-900"
             />
           </label>
           <label
@@ -278,7 +278,7 @@ onMounted(() => conns.refresh());
             v-model="form.accessKeyId"
             required
             autocomplete="off"
-            class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-night-700 dark:bg-night-900"
           />
         </label>
 
@@ -292,7 +292,7 @@ onMounted(() => conns.refresh());
             type="password"
             autocomplete="off"
             :required="!editing"
-            class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-night-700 dark:bg-night-900"
           />
         </label>
 
@@ -324,7 +324,7 @@ onMounted(() => conns.refresh());
           </button>
           <button
             type="button"
-            class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
             @click="testConnection"
           >
             Test

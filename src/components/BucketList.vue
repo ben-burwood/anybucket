@@ -49,7 +49,7 @@ onMounted(load);
     <div class="mb-4 flex items-center justify-between">
       <h1 class="text-lg font-semibold">Buckets</h1>
       <button
-        class="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        class="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
         :disabled="loading"
         @click="load"
       >
@@ -60,7 +60,7 @@ onMounted(load);
     <!-- No active connection -->
     <div
       v-if="noConnection"
-      class="rounded-lg border border-dashed border-slate-300 p-10 text-center dark:border-slate-700"
+      class="rounded-lg border border-dashed border-slate-300 p-10 text-center dark:border-night-700"
     >
       <p class="mb-3 text-sm text-slate-500">
         No active connection. Add one to start browsing.
@@ -96,7 +96,7 @@ onMounted(load);
       <li
         v-for="b in buckets"
         :key="b.name"
-        class="group cursor-pointer rounded-lg border border-slate-200 bg-white p-4 transition hover:border-emerald-300 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-700"
+        class="group cursor-pointer rounded-lg border border-slate-200 bg-white p-4 transition hover:border-emerald-300 hover:shadow-sm dark:border-night-800 dark:bg-night-900 dark:hover:border-emerald-700"
         @click="open(b)"
       >
         <div class="flex items-center gap-2">

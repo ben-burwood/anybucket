@@ -65,10 +65,10 @@ onMounted(loadDetails);
 
 <template>
   <aside
-    class="flex w-96 shrink-0 flex-col border-l border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+    class="flex w-96 shrink-0 flex-col border-l border-slate-200 bg-white dark:border-night-800 dark:bg-night-900"
   >
     <header
-      class="flex items-start justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-slate-800"
+      class="flex items-start justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-night-800"
     >
       <div class="min-w-0">
         <p class="truncate text-sm font-semibold" :title="object.name">
@@ -108,11 +108,11 @@ onMounted(loadDetails);
           <span class="mb-1 block text-xs font-medium text-slate-500">s3:// URI</span>
           <div class="flex gap-1">
             <code
-              class="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800"
+              class="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1 text-xs dark:bg-night-800"
               >{{ s3Uri }}</code
             >
             <button
-              class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
               @click="copy(s3Uri, 'S3 URI')"
             >
               Copy
@@ -124,11 +124,11 @@ onMounted(loadDetails);
           <span class="mb-1 block text-xs font-medium text-slate-500">HTTPS URL</span>
           <div class="flex gap-1">
             <code
-              class="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800"
+              class="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1 text-xs dark:bg-night-800"
               >{{ httpsUrl }}</code
             >
             <button
-              class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
               @click="copy(httpsUrl, 'HTTPS URL')"
             >
               Copy
@@ -144,7 +144,7 @@ onMounted(loadDetails);
             >Presigned URL (15 min)</span
           >
           <button
-            class="rounded border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            class="rounded border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
             :disabled="busy"
             @click="generatePresigned"
           >
@@ -153,18 +153,18 @@ onMounted(loadDetails);
         </div>
         <div v-if="presigned" class="flex gap-1">
           <code
-            class="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800"
+            class="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1 text-xs dark:bg-night-800"
             :title="presigned"
             >{{ presigned }}</code
           >
           <button
-            class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
             @click="copy(presigned!, 'Presigned URL')"
           >
             Copy
           </button>
           <button
-            class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            class="rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
             @click="openUrl(presigned!)"
           >
             Open
@@ -181,7 +181,7 @@ onMounted(loadDetails);
     </div>
 
     <!-- Actions -->
-    <footer class="border-t border-slate-200 p-3 dark:border-slate-800">
+    <footer class="border-t border-slate-200 p-3 dark:border-night-800">
       <button
         class="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
         @click="download"

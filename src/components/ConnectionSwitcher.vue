@@ -44,7 +44,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
     <!-- Quick-select box -->
     <button
       type="button"
-      class="flex min-w-[10rem] items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+      class="flex min-w-[10rem] items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm hover:bg-slate-50 dark:border-night-700 dark:bg-night-900 dark:hover:bg-night-800"
       @click.stop="toggle"
     >
       <span
@@ -70,13 +70,13 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
     <!-- Dropdown -->
     <div
       v-if="open"
-      class="absolute right-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+      class="absolute right-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-night-700 dark:bg-night-900"
     >
       <button
         v-for="c in conns.state.connections"
         :key="c.id"
         type="button"
-        class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+        class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-night-800"
         @click.stop="select(c.id)"
       >
         <span
@@ -91,10 +91,10 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
         </span>
       </button>
 
-      <div class="my-1 border-t border-slate-100 dark:border-slate-800" />
+      <div class="my-1 border-t border-slate-100 dark:border-night-800" />
       <button
         type="button"
-        class="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+        class="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 dark:hover:bg-night-800"
         @click.stop="goManage"
       >
         Manage connections…

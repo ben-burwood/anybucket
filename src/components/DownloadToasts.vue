@@ -22,7 +22,7 @@ const tasks = computed(() => downloads.state.tasks);
     <div
       v-for="t in tasks"
       :key="t.id"
-      class="pointer-events-auto rounded-lg border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-800"
+      class="pointer-events-auto rounded-lg border border-slate-200 bg-white p-3 shadow-lg dark:border-night-700 dark:bg-night-800"
     >
       <div class="flex items-start justify-between gap-2">
         <p class="truncate text-sm font-medium" :title="t.name">{{ t.name }}</p>
@@ -37,7 +37,7 @@ const tasks = computed(() => downloads.state.tasks);
 
       <!-- Progress -->
       <div class="mt-2">
-        <div class="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+        <div class="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-night-700">
           <div
             class="h-full transition-all"
             :class="t.error ? 'bg-rose-500' : t.done ? 'bg-emerald-600' : 'bg-emerald-400'"

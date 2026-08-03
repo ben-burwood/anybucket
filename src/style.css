@@ -18,6 +18,15 @@ body,
   margin: 0;
 }
 
+/* Base window background per theme, applied before Vue mounts (matches
+   slate-50 / slate-950) so there is no flash of the wrong colour. */
+html {
+  background: #f8fafc;
+}
+html.dark {
+  background: #1f1f1f;
+}
+
 /* ag-grid theme is imported per-component; keep the grid host flexible. */
 .grid-host {
   width: 100%;
