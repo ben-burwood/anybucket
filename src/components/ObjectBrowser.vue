@@ -10,7 +10,12 @@ import {
   type ColDef,
   type RowClickedEvent,
 } from "ag-grid-community";
-import { breadcrumbs, parentPrefix, useBrowser } from "../store/useBrowser";
+import {
+  breadcrumbs,
+  parentPrefix,
+  useBrowser,
+  type Crumb,
+} from "../store/useBrowser";
 import { useTheme } from "../store/useTheme";
 import type { ObjectItem } from "../types";
 import { fileType, formatDate, formatSize } from "../utils/format";
@@ -86,6 +91,14 @@ const rowData = computed<Row[]>(() => {
   return [...folders, ...files];
 });
 
+// Counts for the current level only (folders + files here, not descendants).
+// `more` marks a truncated (paginated) listing where the totals are partial.
+const counts = computed(() => ({
+  folders: state.listing?.folders.length ?? 0,
+  files: state.listing?.objects.length ?? 0,
+  more: !!state.listing?.nextToken,
+}));
+
 const columnDefs: ColDef<Row>[] = [
   {
     headerName: "Name",
@@ -136,6 +149,16 @@ function navigateTo(prefix: string) {
 
 const crumbs = computed(() => breadcrumbs(props.prefix));
 
+const MAX_CRUMBS = 3;
+const collapsedCrumbs = computed<{ hidden: Crumb[] | null; shown: Crumb[] }>(() => {
+  const all = crumbs.value.slice(1);
+  if (all.length <= MAX_CRUMBS) return { hidden: null, shown: all };
+  return {
+    hidden: all.slice(0, all.length - MAX_CRUMBS),
+    shown: all.slice(all.length - MAX_CRUMBS),
+  };
+});
+
 // Message shown inside the grid's built-in "no rows" overlay, so an empty
 // result doesn't unmount the table (no component flashing).
 function escapeHtml(s: string): string {
@@ -170,27 +193,52 @@ watch(
       <div
         class="flex items-center gap-1 border-b border-slate-200 px-4 py-2 text-sm dark:border-night-800"
       >
-        <RouterLink
-          to="/"
-          class="text-slate-500 hover:text-emerald-600"
-          title="All buckets"
-        >
-          Buckets
-        </RouterLink>
-        <span class="text-slate-300">/</span>
-        <span class="font-medium">{{ bucket }}</span>
-        <template v-for="(c, i) in crumbs" :key="c.prefix">
-          <span v-if="i > 0" class="text-slate-300">/</span>
-          <button
-            v-if="i > 0"
-            class="text-slate-500 hover:text-emerald-600"
-            @click="navigateTo(c.prefix)"
+        <div class="flex min-w-0 items-center gap-1 overflow-hidden">
+          <RouterLink
+            to="/"
+            class="shrink-0 text-slate-500 hover:text-emerald-600"
+            title="All buckets"
           >
-            {{ c.label }}
+            Buckets
+          </RouterLink>
+          <span class="shrink-0 text-slate-300">/</span>
+          <button
+            class="shrink-0 whitespace-nowrap font-medium hover:text-emerald-600"
+            :title="bucket"
+            @click="navigateTo('')"
+          >
+            {{ bucket }}
           </button>
-        </template>
 
-        <div class="ml-auto flex items-center gap-2">
+          <!-- Collapsed leading segments -->
+          <template v-if="collapsedCrumbs.hidden">
+            <span class="shrink-0 text-slate-300">/</span>
+            <button
+              class="shrink-0 text-slate-500 hover:text-emerald-600"
+              :title="collapsedCrumbs.hidden.map((h) => h.label).join(' / ')"
+              @click="
+                navigateTo(
+                  collapsedCrumbs.hidden[collapsedCrumbs.hidden.length - 1].prefix,
+                )
+              "
+            >
+              …
+            </button>
+          </template>
+
+          <template v-for="c in collapsedCrumbs.shown" :key="c.prefix">
+            <span class="shrink-0 text-slate-300">/</span>
+            <button
+              class="max-w-[14rem] shrink-0 truncate text-slate-500 hover:text-emerald-600"
+              :title="c.label"
+              @click="navigateTo(c.prefix)"
+            >
+              {{ c.label }}
+            </button>
+          </template>
+        </div>
+
+        <div class="ml-auto flex shrink-0 items-center gap-2">
           <button
             class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
             :title="`Copy s3://${bucket}/${prefix}`"
@@ -233,8 +281,16 @@ watch(
           </button>
         </div>
 
+        <span
+          class="ml-auto text-xs text-slate-400"
+          :title="counts.more ? 'Current level (partial — more pages to load)' : 'Current level'"
+        >
+          {{ counts.folders }} folder{{ counts.folders === 1 ? "" : "s" }} ·
+          {{ counts.files }} file{{ counts.files === 1 ? "" : "s"
+          }}{{ counts.more ? "+" : "" }}
+        </span>
         <button
-          class="ml-auto flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
+          class="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
           title="Refresh"
           :disabled="state.loading"
           @click="refresh"
