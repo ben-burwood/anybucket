@@ -15,9 +15,15 @@ export function listObjects(
   bucket: string,
   prefix: string,
   continuationToken?: string | null,
+  filter?: string | null,
 ): Promise<Listing> {
   return invoke("list_objects", {
-    params: { bucket, prefix, continuationToken: continuationToken ?? null },
+    params: {
+      bucket,
+      prefix,
+      filter: filter ?? null,
+      continuationToken: continuationToken ?? null,
+    },
   });
 }
 

@@ -5,6 +5,8 @@ import { errorMessage, type Listing } from "../types";
 interface BrowserState {
   bucket: string;
   prefix: string;
+  /** Active prefix-filter term within the current folder ("" = none). */
+  filter: string;
   listing: Listing | null;
   loading: boolean;
   loadingMore: boolean;
@@ -25,25 +27,43 @@ export function useBrowser() {
   const state = reactive<BrowserState>({
     bucket: "",
     prefix: "",
+    filter: "",
     listing: null,
     loading: false,
     loadingMore: false,
     error: null,
   });
 
-  async function load(bucket: string, prefix: string): Promise<void> {
-    state.bucket = bucket;
-    state.prefix = prefix;
+  /** Fetch the first page of the current bucket/prefix, applying `state.filter`. */
+  async function fetchFirstPage(): Promise<void> {
     state.listing = null;
     state.error = null;
     state.loading = true;
     try {
-      state.listing = await s3.listObjects(bucket, prefix);
+      state.listing = await s3.listObjects(
+        state.bucket,
+        state.prefix,
+        null,
+        state.filter || null,
+      );
     } catch (e) {
       state.error = errorMessage(e);
     } finally {
       state.loading = false;
     }
+  }
+
+  async function load(bucket: string, prefix: string): Promise<void> {
+    state.bucket = bucket;
+    state.prefix = prefix;
+    state.filter = ""; // a folder change clears any active filter
+    await fetchFirstPage();
+  }
+
+  /** Re-list the current folder filtered by a key-prefix term. */
+  async function applyFilter(query: string): Promise<void> {
+    state.filter = query;
+    await fetchFirstPage();
   }
 
   async function loadMore(): Promise<void> {
@@ -55,6 +75,7 @@ export function useBrowser() {
         state.bucket,
         state.prefix,
         current.nextToken,
+        state.filter || null,
       );
       current.folders.push(...next.folders);
       current.objects.push(...next.objects);
@@ -66,7 +87,7 @@ export function useBrowser() {
     }
   }
 
-  return { state, load, loadMore };
+  return { state, load, applyFilter, loadMore };
 }
 
 /** Build breadcrumb segments from a `logs/2026/` style prefix. */

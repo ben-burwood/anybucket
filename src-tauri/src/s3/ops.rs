@@ -29,11 +29,17 @@ pub async fn list_buckets(client: &Client) -> AppResult<Vec<Bucket>> {
 /// become folders and `Contents` become files, split by the `/` delimiter.
 pub async fn list_objects(client: &Client, params: &ListParams) -> AppResult<Listing> {
     let max_keys = params.max_keys.unwrap_or(DEFAULT_MAX_KEYS);
+    // Query prefix = folder + filter text; display names are stripped by the
+    // folder (`dir`) so entries still render relative to the current folder.
+    let dir = params.prefix.as_str();
+    let filter = params.filter.as_deref().unwrap_or("");
+    let effective_prefix = format!("{dir}{filter}");
+
     let mut req = client
         .list_objects_v2()
         .bucket(&params.bucket)
         .delimiter("/")
-        .prefix(&params.prefix)
+        .prefix(&effective_prefix)
         .max_keys(max_keys);
 
     if let Some(token) = &params.continuation_token {
@@ -41,7 +47,7 @@ pub async fn list_objects(client: &Client, params: &ListParams) -> AppResult<Lis
     }
 
     let out = req.send().await?;
-    let prefix = params.prefix.as_str();
+    let prefix = dir;
 
     let folders = out
         .common_prefixes()

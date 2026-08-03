@@ -18,12 +18,25 @@ import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 
 const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
-const { state, load, loadMore } = useBrowser();
+const { state, load, applyFilter, loadMore } = useBrowser();
 
 const { isDark } = useTheme();
 
 const selected = ref<ObjectItem | null>(null);
 const uriCopied = ref(false);
+
+// Prefix-filter box, debounced so we re-query S3 only when typing pauses.
+const query = ref("");
+let filterTimer: ReturnType<typeof setTimeout> | undefined;
+function onFilterInput() {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => applyFilter(query.value.trim()), 250);
+}
+function clearFilter() {
+  clearTimeout(filterTimer);
+  query.value = "";
+  applyFilter("");
+}
 
 // ag-grid theme via the JS Theming API (no external CSS → CSP-safe), with an
 // emerald accent and a colour scheme that follows the app's light/dark mode.
@@ -127,6 +140,7 @@ watch(
   () => [props.bucket, props.prefix] as const,
   ([bucket, prefix]) => {
     selected.value = null;
+    query.value = ""; // clear the filter box when changing folders
     load(bucket, prefix);
   },
   { immediate: true },
@@ -179,6 +193,32 @@ watch(
         </div>
       </div>
 
+      <!-- Prefix filter (above the grid, aligned over the Name column) -->
+      <div
+        class="border-b border-slate-200 px-3 py-1.5 dark:border-night-800"
+      >
+        <div class="relative w-72 max-w-full">
+          <input
+            v-model="query"
+            type="text"
+            placeholder="Filter by prefix…"
+            spellcheck="false"
+            autocomplete="off"
+            class="w-full rounded border border-slate-200 py-1 pl-2 pr-6 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-night-700 dark:bg-night-800"
+            @input="onFilterInput"
+            @keydown.esc="clearFilter"
+          />
+          <button
+            v-if="query"
+            class="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            title="Clear filter"
+            @click="clearFilter"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
       <!-- States -->
       <div v-if="state.loading" class="p-8 text-center text-sm text-slate-400">
         Loading…
@@ -193,7 +233,8 @@ watch(
         v-else-if="rowData.length === 0"
         class="p-8 text-center text-sm text-slate-400"
       >
-        This location is empty.
+        <template v-if="state.filter">No matches for “{{ state.filter }}”.</template>
+        <template v-else>This location is empty.</template>
       </div>
 
       <!-- Grid -->

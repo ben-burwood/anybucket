@@ -67,6 +67,10 @@ pub struct ListParams {
     pub bucket: String,
     #[serde(default)]
     pub prefix: String,
+    /// Extra key-prefix filter appended to `prefix` for the S3 query (filter box).
+    /// Display names are still stripped by `prefix`, not this.
+    #[serde(default)]
+    pub filter: Option<String>,
     pub continuation_token: Option<String>,
     /// Page size; defaults applied in the op layer.
     pub max_keys: Option<i32>,
