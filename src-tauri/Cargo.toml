@@ -1,0 +1,43 @@
+[package]
+name = "anybucket"
+version = "0.1.0"
+description = "Read-only desktop explorer for S3-compatible object stores"
+authors = ["Ben Burwood"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "anybucket_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-clipboard-manager = "2"
+
+# S3 / AWS
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
+aws-credential-types = "1"
+aws-smithy-types = "1"
+aws-smithy-runtime-api = "1"
+
+# Async + streaming
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync"] }
+futures-util = "0.3"
+
+# Secrets + persistence + models
+keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+url = "2"
+
+[features]
+# By default Tauri runs in production mode; `tauri dev` toggles custom-protocol off.
+custom-protocol = ["tauri/custom-protocol"]

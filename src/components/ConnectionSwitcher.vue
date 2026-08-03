@@ -1,0 +1,104 @@
+<script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import { useConnections } from "../store/useConnections";
+
+const router = useRouter();
+const conns = useConnections();
+
+const open = ref(false);
+const root = ref<HTMLElement | null>(null);
+
+function toggle() {
+  // With no connections there is nothing to switch — go straight to management.
+  if (conns.state.connections.length === 0) {
+    goManage();
+    return;
+  }
+  open.value = !open.value;
+}
+
+async function select(id: string) {
+  open.value = false;
+  if (conns.state.active?.id === id) return;
+  await conns.setActive(id);
+  // Show the newly active connection's buckets.
+  router.push("/");
+}
+
+function goManage() {
+  open.value = false;
+  router.push("/connections");
+}
+
+function onDocClick(e: MouseEvent) {
+  if (root.value && !root.value.contains(e.target as Node)) open.value = false;
+}
+
+onMounted(() => document.addEventListener("click", onDocClick));
+onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
+</script>
+
+<template>
+  <div ref="root" class="relative flex items-center gap-1">
+    <!-- Quick-select box -->
+    <button
+      type="button"
+      class="flex min-w-[10rem] items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+      @click.stop="toggle"
+    >
+      <span
+        class="h-2 w-2 shrink-0 rounded-full"
+        :class="conns.state.active ? 'bg-emerald-500' : 'bg-slate-300'"
+      />
+      <span class="min-w-0 flex-1 truncate text-left">
+        {{ conns.state.active?.name ?? "No connection" }}
+      </span>
+      <svg
+        class="h-3.5 w-3.5 shrink-0 text-slate-400"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+      >
+        <path
+          fill-rule="evenodd"
+          d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+          clip-rule="evenodd"
+        />
+      </svg>
+    </button>
+
+    <!-- Dropdown -->
+    <div
+      v-if="open"
+      class="absolute right-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+    >
+      <button
+        v-for="c in conns.state.connections"
+        :key="c.id"
+        type="button"
+        class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+        @click.stop="select(c.id)"
+      >
+        <span
+          class="h-2 w-2 shrink-0 rounded-full"
+          :class="conns.state.active?.id === c.id ? 'bg-emerald-500' : 'bg-transparent'"
+        />
+        <span class="min-w-0 flex-1">
+          <span class="block truncate">{{ c.name }}</span>
+          <span class="block truncate text-xs text-slate-400">
+            {{ c.endpointUrl ?? "AWS S3" }} · {{ c.region }}
+          </span>
+        </span>
+      </button>
+
+      <div class="my-1 border-t border-slate-100 dark:border-slate-800" />
+      <button
+        type="button"
+        class="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+        @click.stop="goManage"
+      >
+        Manage connections…
+      </button>
+    </div>
+  </div>
+</template>
