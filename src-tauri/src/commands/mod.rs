@@ -88,17 +88,22 @@ pub async fn list_buckets(state: Shared<'_>) -> AppResult<Vec<Bucket>> {
 #[tauri::command]
 pub async fn list_objects(params: ListParams, state: Shared<'_>) -> AppResult<Listing> {
     let client = client_for_active(&state).await?;
-    ops::list_objects(&client, &params).await
+    if params.versions == Some(true) {
+        ops::list_object_versions(&client, &params).await
+    } else {
+        ops::list_objects(&client, &params).await
+    }
 }
 
 #[tauri::command]
 pub async fn head_object(
     bucket: String,
     key: String,
+    version_id: Option<String>,
     state: Shared<'_>,
 ) -> AppResult<ObjectMeta> {
     let client = client_for_active(&state).await?;
-    ops::head_object(&client, &bucket, &key).await
+    ops::head_object(&client, &bucket, &key, version_id.as_deref()).await
 }
 
 #[tauri::command]
@@ -106,6 +111,7 @@ pub async fn presign_get(
     bucket: String,
     key: String,
     expires_secs: Option<u64>,
+    version_id: Option<String>,
     state: Shared<'_>,
 ) -> AppResult<String> {
     let client = client_for_active(&state).await?;
@@ -114,6 +120,7 @@ pub async fn presign_get(
         &bucket,
         &key,
         expires_secs.unwrap_or(DEFAULT_PRESIGN_SECS),
+        version_id.as_deref(),
     )
     .await
 }
@@ -130,6 +137,7 @@ pub struct ObjectUris {
 pub async fn object_uris(
     bucket: String,
     key: String,
+    version_id: Option<String>,
     state: Shared<'_>,
 ) -> AppResult<ObjectUris> {
     let conn = {
@@ -138,7 +146,7 @@ pub async fn object_uris(
     };
     Ok(ObjectUris {
         s3_uri: s3::s3_uri(&bucket, &key),
-        https_url: s3::https_url(&conn, &bucket, &key)?,
+        https_url: s3::https_url(&conn, &bucket, &key, version_id.as_deref())?,
     })
 }
 
@@ -148,11 +156,12 @@ pub async fn download_object(
     bucket: String,
     key: String,
     dest: String,
+    version_id: Option<String>,
     on_progress: Channel<DownloadProgress>,
     state: Shared<'_>,
 ) -> AppResult<()> {
     let client = client_for_active(&state).await?;
-    let output = ops::get_object_stream(&client, &bucket, &key).await?;
+    let output = ops::get_object_stream(&client, &bucket, &key, version_id.as_deref()).await?;
 
     let total = match output.content_length() {
         Some(n) if n >= 0 => Some(n as u64),

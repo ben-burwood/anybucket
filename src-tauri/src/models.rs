@@ -32,6 +32,12 @@ pub struct ObjectItem {
     pub last_modified: Option<String>,
     pub etag: Option<String>,
     pub storage_class: Option<String>,
+    /// Version id (only populated in "show previous versions" mode).
+    pub version_id: Option<String>,
+    /// Whether this is the current version of the key.
+    pub is_latest: Option<bool>,
+    /// Whether this row is a delete marker rather than a real object version.
+    pub is_delete_marker: bool,
 }
 
 /// A single page of a bucket listing at a given prefix.
@@ -71,6 +77,10 @@ pub struct ListParams {
     /// Display names are still stripped by `prefix`, not this.
     #[serde(default)]
     pub filter: Option<String>,
+    /// When true, list all object versions + delete markers (ListObjectVersions).
+    #[serde(default)]
+    pub versions: Option<bool>,
+    /// In versions mode this is an opaque `"<keyMarker>\u{1f}<versionIdMarker>"`.
     pub continuation_token: Option<String>,
     /// Page size; defaults applied in the op layer.
     pub max_keys: Option<i32>,

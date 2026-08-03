@@ -26,7 +26,12 @@ let counter = 0;
  * Prompt for a save location and stream the object there, tracking progress as
  * a dismissable toast. Returns once the download settles (or is cancelled).
  */
-async function start(bucket: string, key: string, name: string): Promise<void> {
+async function start(
+  bucket: string,
+  key: string,
+  name: string,
+  versionId?: string | null,
+): Promise<void> {
   const dest = await save({ defaultPath: name });
   if (!dest) return; // user cancelled the dialog
 
@@ -43,14 +48,20 @@ async function start(bucket: string, key: string, name: string): Promise<void> {
   state.tasks.push(task);
 
   try {
-    await s3.downloadObject(bucket, key, dest, (p) => {
-      task.downloaded = p.downloaded;
-      task.total = p.total;
-      if (p.done) {
-        task.done = true;
-        task.error = p.error;
-      }
-    });
+    await s3.downloadObject(
+      bucket,
+      key,
+      dest,
+      (p) => {
+        task.downloaded = p.downloaded;
+        task.total = p.total;
+        if (p.done) {
+          task.done = true;
+          task.error = p.error;
+        }
+      },
+      versionId,
+    );
     task.done = true;
   } catch (e) {
     task.done = true;

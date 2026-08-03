@@ -37,6 +37,10 @@ export interface ObjectItem {
   lastModified: string | null;
   etag: string | null;
   storageClass: string | null;
+  /** Version id (only in "show previous versions" mode). */
+  versionId: string | null;
+  isLatest: boolean | null;
+  isDeleteMarker: boolean;
 }
 
 export interface Listing {

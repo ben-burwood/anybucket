@@ -16,35 +16,47 @@ export function listObjects(
   prefix: string,
   continuationToken?: string | null,
   filter?: string | null,
+  versions?: boolean,
 ): Promise<Listing> {
   return invoke("list_objects", {
     params: {
       bucket,
       prefix,
       filter: filter ?? null,
+      versions: versions ?? false,
       continuationToken: continuationToken ?? null,
     },
   });
 }
 
-export function headObject(bucket: string, key: string): Promise<ObjectMeta> {
-  return invoke("head_object", { bucket, key });
+export function headObject(
+  bucket: string,
+  key: string,
+  versionId?: string | null,
+): Promise<ObjectMeta> {
+  return invoke("head_object", { bucket, key, versionId: versionId ?? null });
 }
 
 export function presignGet(
   bucket: string,
   key: string,
   expiresSecs?: number,
+  versionId?: string | null,
 ): Promise<string> {
   return invoke("presign_get", {
     bucket,
     key,
     expiresSecs: expiresSecs ?? null,
+    versionId: versionId ?? null,
   });
 }
 
-export function objectUris(bucket: string, key: string): Promise<ObjectUris> {
-  return invoke("object_uris", { bucket, key });
+export function objectUris(
+  bucket: string,
+  key: string,
+  versionId?: string | null,
+): Promise<ObjectUris> {
+  return invoke("object_uris", { bucket, key, versionId: versionId ?? null });
 }
 
 /**
@@ -56,8 +68,15 @@ export function downloadObject(
   key: string,
   dest: string,
   onProgress: (p: DownloadProgress) => void,
+  versionId?: string | null,
 ): Promise<void> {
   const channel = new Channel<DownloadProgress>();
   channel.onmessage = onProgress;
-  return invoke("download_object", { bucket, key, dest, onProgress: channel });
+  return invoke("download_object", {
+    bucket,
+    key,
+    dest,
+    versionId: versionId ?? null,
+    onProgress: channel,
+  });
 }

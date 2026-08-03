@@ -33,6 +33,12 @@ html.dark {
   height: 100%;
 }
 
+/* Delete-marker rows in the versions view: de-emphasised + italic. */
+.delete-marker-row {
+  font-style: italic;
+  opacity: 0.6;
+}
+
 /* Scrollable but with the scrollbar hidden (used for URI/URL boxes). */
 .no-scrollbar {
   scrollbar-width: none; /* Firefox */

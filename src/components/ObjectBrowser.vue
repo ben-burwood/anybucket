@@ -23,7 +23,7 @@ import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 
 const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
-const { state, load, applyFilter, refresh, loadMore } = useBrowser();
+const { state, load, applyFilter, setVersions, refresh, loadMore } = useBrowser();
 
 const { isDark } = useTheme();
 
@@ -63,9 +63,19 @@ interface Row {
   size: number | null;
   lastModified: string | null;
   type: string;
+  version: string | null;
   // Folder navigation target / file key.
   prefix?: string;
   object?: ObjectItem;
+}
+
+/** Short label for the Version column. */
+function versionLabel(o: ObjectItem): string {
+  if (o.isDeleteMarker) return "delete marker";
+  if (o.isLatest) return "Latest";
+  if (o.versionId && o.versionId !== "null")
+    return `${o.versionId.slice(0, 6)}… (prev)`;
+  return "—";
 }
 
 const rowData = computed<Row[]>(() => {
@@ -77,6 +87,7 @@ const rowData = computed<Row[]>(() => {
     size: null,
     lastModified: null,
     type: "Folder",
+    version: null,
     prefix: f.prefix,
   }));
   const files: Row[] = l.objects.map((o) => ({
@@ -84,10 +95,10 @@ const rowData = computed<Row[]>(() => {
     name: o.name,
     size: o.size,
     lastModified: o.lastModified,
-    type: fileType(o.name),
+    type: o.isDeleteMarker ? "Delete marker" : fileType(o.name),
+    version: versionLabel(o),
     object: o,
   }));
-  // Folders first; each group alphabetical. User header-clicks re-sort freely.
   return [...folders, ...files];
 });
 
@@ -99,34 +110,62 @@ const counts = computed(() => ({
   more: !!state.listing?.nextToken,
 }));
 
-const columnDefs: ColDef<Row>[] = [
-  {
-    headerName: "Name",
-    field: "name",
-    flex: 2,
-    minWidth: 220,
-    valueGetter: (p) =>
-      `${p.data?.kind === "folder" ? "📁" : "📄"}  ${p.data?.name ?? ""}`,
-  },
-  {
-    headerName: "Size",
-    field: "size",
-    width: 130,
-    valueFormatter: (p) => (p.data?.kind === "folder" ? "—" : formatSize(p.value)),
-  },
-  {
-    headerName: "Last Modified",
-    field: "lastModified",
-    width: 200,
-    valueFormatter: (p) => (p.value ? formatDate(p.value) : "—"),
-  },
-  { headerName: "Type", field: "type", width: 120 },
-];
+const columnDefs = computed<ColDef<Row>[]>(() => {
+  const cols: ColDef<Row>[] = [
+    {
+      headerName: "Name",
+      field: "name",
+      flex: 2,
+      minWidth: 220,
+      valueGetter: (p) => {
+        const d = p.data;
+        if (!d) return "";
+        if (d.kind === "folder") return `📁  ${d.name}`;
+        const previous = d.object?.isLatest === false;
+        return `${previous ? "     ↳ " : ""}📄  ${d.name}`;
+      },
+    },
+  ];
+  if (state.versions) {
+    cols.push({ headerName: "Version", field: "version", width: 150 });
+  }
+  cols.push(
+    {
+      headerName: "Size",
+      field: "size",
+      width: 120,
+      valueFormatter: (p) =>
+        p.data?.kind === "folder" || p.data?.object?.isDeleteMarker
+          ? "—"
+          : formatSize(p.value),
+    },
+    {
+      headerName: "Last Modified",
+      field: "lastModified",
+      width: 190,
+      valueFormatter: (p) => (p.value ? formatDate(p.value) : "—"),
+    },
+    { headerName: "Type", field: "type", width: 120 },
+  );
+  return cols;
+});
 
 const defaultColDef: ColDef = {
   sortable: true,
   resizable: true,
 };
+
+// Distinct id per (key, version) so same-key version rows don't collide.
+function getRowId(p: { data: Row }): string {
+  const r = p.data;
+  return r.object
+    ? `${r.object.key}@${r.object.versionId ?? ""}`
+    : `folder:${r.prefix ?? r.name}`;
+}
+
+function getRowClass(p: { data?: Row }): string | undefined {
+  return p.data?.object?.isDeleteMarker ? "delete-marker-row" : undefined;
+}
 
 function onRowClicked(e: RowClickedEvent<Row>) {
   const row = e.data;
@@ -136,6 +175,13 @@ function onRowClicked(e: RowClickedEvent<Row>) {
   } else if (row.object) {
     selected.value = row.object;
   }
+}
+
+// Clear the open detail panel before re-listing: the selected row (often a
+// specific version) won't exist in the re-fetched listing.
+function toggleVersions(on: boolean) {
+  selected.value = null;
+  setVersions(on);
 }
 
 function navigateTo(prefix: string) {
@@ -281,6 +327,27 @@ watch(
           </button>
         </div>
 
+        <label
+          class="flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400"
+          title="Show all object versions and delete markers"
+        >
+          <span class="relative inline-flex h-4 w-7 items-center">
+            <input
+              type="checkbox"
+              class="peer sr-only"
+              :checked="state.versions"
+              @change="toggleVersions(($event.target as HTMLInputElement).checked)"
+            />
+            <span
+              class="absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-600 dark:bg-night-700"
+            />
+            <span
+              class="absolute left-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform peer-checked:translate-x-3"
+            />
+          </span>
+          Show previous versions
+        </label>
+
         <span
           class="ml-auto text-xs text-slate-400"
           :title="counts.more ? 'Current level (partial — more pages to load)' : 'Current level'"
@@ -329,6 +396,8 @@ watch(
           :animateRows="false"
           :loading="state.loading"
           :overlayNoRowsTemplate="noRowsTemplate"
+          :getRowId="getRowId"
+          :getRowClass="getRowClass"
           rowSelection="single"
           @row-clicked="onRowClicked"
         />

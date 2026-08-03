@@ -7,6 +7,8 @@ interface BrowserState {
   prefix: string;
   /** Active prefix-filter term within the current folder ("" = none). */
   filter: string;
+  /** Show all object versions + delete markers instead of latest-only. */
+  versions: boolean;
   listing: Listing | null;
   loading: boolean;
   loadingMore: boolean;
@@ -28,6 +30,7 @@ export function useBrowser() {
     bucket: "",
     prefix: "",
     filter: "",
+    versions: false,
     listing: null,
     loading: false,
     loadingMore: false,
@@ -45,6 +48,7 @@ export function useBrowser() {
         state.prefix,
         null,
         state.filter || null,
+        state.versions,
       );
     } catch (e) {
       state.error = errorMessage(e);
@@ -66,6 +70,12 @@ export function useBrowser() {
     await fetchFirstPage();
   }
 
+  /** Toggle showing all versions + delete markers, and re-list. */
+  async function setVersions(on: boolean): Promise<void> {
+    state.versions = on;
+    await fetchFirstPage();
+  }
+
   /** Re-fetch the current folder, preserving the active filter. */
   async function refresh(): Promise<void> {
     await fetchFirstPage();
@@ -81,6 +91,7 @@ export function useBrowser() {
         state.prefix,
         current.nextToken,
         state.filter || null,
+        state.versions,
       );
       current.folders.push(...next.folders);
       current.objects.push(...next.objects);
@@ -92,7 +103,7 @@ export function useBrowser() {
     }
   }
 
-  return { state, load, applyFilter, refresh, loadMore };
+  return { state, load, applyFilter, setVersions, refresh, loadMore };
 }
 
 /** Build breadcrumb segments from a `logs/2026/` style prefix. */

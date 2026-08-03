@@ -45,8 +45,14 @@ pub fn s3_uri(bucket: &str, key: &str) -> String {
 }
 
 /// A browser-openable HTTPS URL for an object, honouring the connection's
-/// endpoint and addressing style.
-pub fn https_url(conn: &Connection, bucket: &str, key: &str) -> AppResult<String> {
+/// endpoint and addressing style. When `version_id` is set, a `?versionId=`
+/// query is appended.
+pub fn https_url(
+    conn: &Connection,
+    bucket: &str,
+    key: &str,
+    version_id: Option<&str>,
+) -> AppResult<String> {
     let endpoint = conn
         .endpoint_url
         .clone()
@@ -60,11 +66,16 @@ pub fn https_url(conn: &Connection, bucket: &str, key: &str) -> AppResult<String
     let port = url.port().map(|p| format!(":{p}")).unwrap_or_default();
     let encoded_key = encode_key(key);
 
-    if conn.force_path_style {
-        Ok(format!("{scheme}://{host}{port}/{bucket}/{encoded_key}"))
+    let mut out = if conn.force_path_style {
+        format!("{scheme}://{host}{port}/{bucket}/{encoded_key}")
     } else {
-        Ok(format!("{scheme}://{bucket}.{host}{port}/{encoded_key}"))
+        format!("{scheme}://{bucket}.{host}{port}/{encoded_key}")
+    };
+    if let Some(v) = version_id {
+        out.push_str("?versionId=");
+        out.push_str(&encode_key(v));
     }
+    Ok(out)
 }
 
 /// Percent-encode a key for use in a URL path, preserving `/` separators.

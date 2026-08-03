@@ -23,14 +23,15 @@ async function loadDetails() {
   meta.value = null;
   presigned.value = null;
   error.value = null;
+  const version = props.object.versionId;
   try {
-    const [uris, head] = await Promise.all([
-      s3.objectUris(props.bucket, props.object.key),
-      s3.headObject(props.bucket, props.object.key),
-    ]);
+    const uris = await s3.objectUris(props.bucket, props.object.key, version);
     s3Uri.value = uris.s3Uri;
     httpsUrl.value = uris.httpsUrl;
-    meta.value = head;
+    // A delete marker has no object body — HEAD would 405.
+    if (!props.object.isDeleteMarker) {
+      meta.value = await s3.headObject(props.bucket, props.object.key, version);
+    }
   } catch (e) {
     error.value = errorMessage(e);
   }
@@ -40,7 +41,12 @@ async function generatePresigned() {
   busy.value = true;
   error.value = null;
   try {
-    presigned.value = await s3.presignGet(props.bucket, props.object.key);
+    presigned.value = await s3.presignGet(
+      props.bucket,
+      props.object.key,
+      undefined,
+      props.object.versionId,
+    );
   } catch (e) {
     error.value = errorMessage(e);
   } finally {
@@ -49,10 +55,17 @@ async function generatePresigned() {
 }
 
 function download() {
-  downloads.start(props.bucket, props.object.key, props.object.name);
+  downloads.start(
+    props.bucket,
+    props.object.key,
+    props.object.name,
+    props.object.versionId,
+  );
 }
 
-watch(() => props.object.key, loadDetails);
+// Watch key AND versionId so switching between two versions of the same key
+// (unchanged key) still reloads the details for the newly selected version.
+watch(() => [props.object.key, props.object.versionId], loadDetails);
 onMounted(loadDetails);
 </script>
 
@@ -64,8 +77,22 @@ onMounted(loadDetails);
       class="flex items-start justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-night-800"
     >
       <div class="min-w-0">
-        <p class="truncate text-sm font-semibold" :title="object.name">
-          📄 {{ object.name }}
+        <p class="flex items-center gap-1.5 text-sm font-semibold">
+          <span class="truncate" :title="object.name">
+            {{ object.isDeleteMarker ? "🗑" : "📄" }} {{ object.name }}
+          </span>
+          <span
+            v-if="object.isLatest === true"
+            class="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+          >
+            latest
+          </span>
+          <span
+            v-else-if="object.isLatest === false"
+            class="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+          >
+            outdated
+          </span>
         </p>
         <p class="truncate text-xs text-slate-400" :title="object.key">
           {{ object.key }}
@@ -93,6 +120,15 @@ onMounted(loadDetails);
         <dd class="truncate" :title="meta?.etag ?? ''">{{ meta?.etag ?? "—" }}</dd>
         <dt class="text-slate-400">Storage</dt>
         <dd>{{ meta?.storageClass ?? object.storageClass ?? "—" }}</dd>
+        <template v-if="object.versionId">
+          <dt class="text-slate-400">Version</dt>
+          <dd class="truncate" :title="object.versionId">
+            {{ object.versionId }}
+            <span v-if="object.isDeleteMarker" class="text-rose-500"
+              >(delete marker)</span
+            >
+          </dd>
+        </template>
       </dl>
 
       <!-- URIs -->
@@ -108,8 +144,8 @@ onMounted(loadDetails);
         </div>
       </div>
 
-      <!-- Presigned URL -->
-      <div>
+      <!-- Presigned URL (not applicable to delete markers) -->
+      <div v-if="!object.isDeleteMarker">
         <div class="mb-1 flex items-center justify-between">
           <span class="text-xs font-medium text-slate-500"
             >Presigned URL (15 min)</span
@@ -143,11 +179,15 @@ onMounted(loadDetails);
     <!-- Actions -->
     <footer class="border-t border-slate-200 p-3 dark:border-night-800">
       <button
+        v-if="!object.isDeleteMarker"
         class="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
         @click="download"
       >
         ⬇ Download
       </button>
+      <p v-else class="text-center text-xs text-slate-400">
+        Delete marker — no content to download.
+      </p>
     </footer>
   </aside>
 </template>
