@@ -8,6 +8,18 @@ use crate::error::{AppError, AppResult};
 /// Each secret is keyed by the connection's `id`.
 const KEYCHAIN_SERVICE: &str = "co.anybucket";
 
+/// Whether a connection may perform writes (uploads, etc.) or is browse-only.
+///
+/// Defaults to [`AccessMode::ReadOnly`] so connections saved before this field
+/// existed — and any new connection until explicitly armed — cannot write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum AccessMode {
+    #[default]
+    ReadOnly,
+    ReadWrite,
+}
+
 /// A saved connection to an S3-compatible endpoint.
 ///
 /// The secret access key is **never** stored here or sent to the frontend; it
@@ -25,6 +37,9 @@ pub struct Connection {
     #[serde(default)]
     pub force_path_style: bool,
     pub access_key_id: String,
+    /// Whether writes are permitted for this connection. Enforced in the backend.
+    #[serde(default)]
+    pub mode: AccessMode,
 }
 
 /// Payload from the frontend when creating/updating a connection. Carries the
@@ -42,6 +57,8 @@ pub struct ConnectionInput {
     pub force_path_style: bool,
     pub access_key_id: String,
     pub secret_access_key: String,
+    #[serde(default)]
+    pub mode: AccessMode,
 }
 
 impl ConnectionInput {
@@ -54,6 +71,7 @@ impl ConnectionInput {
             region: self.region.clone(),
             force_path_style: self.force_path_style,
             access_key_id: self.access_key_id.clone(),
+            mode: self.mode,
         }
     }
 }

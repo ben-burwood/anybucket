@@ -1,5 +1,8 @@
 // TypeScript mirrors of the Rust DTOs (camelCase via serde rename_all).
 
+/** Whether a connection may write (uploads, etc.) or is browse-only. */
+export type AccessMode = "readOnly" | "readWrite";
+
 export interface Connection {
   id: string;
   name: string;
@@ -7,6 +10,7 @@ export interface Connection {
   region: string;
   forcePathStyle: boolean;
   accessKeyId: string;
+  mode: AccessMode;
 }
 
 /** Payload for creating/updating a connection — carries the secret. */
@@ -18,6 +22,7 @@ export interface ConnectionInput {
   forcePathStyle: boolean;
   accessKeyId: string;
   secretAccessKey: string;
+  mode: AccessMode;
 }
 
 export interface Bucket {

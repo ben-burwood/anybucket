@@ -55,6 +55,7 @@ const emptyForm = (): ConnectionInput => ({
   forcePathStyle: false,
   accessKeyId: "",
   secretAccessKey: "",
+  mode: "readOnly",
 });
 
 const form = reactive<ConnectionInput>(emptyForm());
@@ -81,6 +82,7 @@ function editConnection(c: Connection) {
     forcePathStyle: c.forcePathStyle,
     accessKeyId: c.accessKeyId,
     secretAccessKey: "", // never returned; blank keeps the existing secret
+    mode: c.mode,
   });
   provider.value = inferProvider(c);
   editing.value = true;
@@ -171,6 +173,17 @@ onMounted(() => conns.refresh());
                   class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
                 >
                   Active
+                </span>
+                <span
+                  class="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
+                  :class="
+                    c.mode === 'readWrite'
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                      : 'bg-slate-100 text-slate-500 dark:bg-night-800 dark:text-slate-400'
+                  "
+                  :title="c.mode === 'readWrite' ? 'Read-write' : 'Read-only'"
+                >
+                  {{ c.mode === "readWrite" ? "RW" : "RO" }}
                 </span>
               </div>
               <p class="truncate text-xs text-slate-400">
@@ -299,6 +312,47 @@ onMounted(() => conns.refresh());
             class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-night-700 dark:bg-night-900"
           />
         </label>
+
+        <!-- Access mode: gates all write operations (uploads, etc.). -->
+        <div
+          class="flex items-start justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 dark:border-night-700"
+        >
+          <div class="min-w-0">
+            <span class="block text-xs font-medium text-slate-600 dark:text-slate-300">
+              Read-write access
+            </span>
+            <span class="block text-[11px] text-slate-400">
+              Allow uploads &amp; other writes. Off = browse-only (safe default).
+            </span>
+          </div>
+          <label
+            class="flex shrink-0 cursor-pointer items-center pt-0.5"
+            :title="
+              form.mode === 'readWrite'
+                ? 'Writes enabled'
+                : 'Read-only (no writes)'
+            "
+          >
+            <span class="relative inline-flex h-5 w-9 items-center">
+              <input
+                type="checkbox"
+                class="peer sr-only"
+                :checked="form.mode === 'readWrite'"
+                @change="
+                  form.mode = ($event.target as HTMLInputElement).checked
+                    ? 'readWrite'
+                    : 'readOnly'
+                "
+              />
+              <span
+                class="absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-amber-500 dark:bg-night-700"
+              />
+              <span
+                class="absolute left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4"
+              />
+            </span>
+          </label>
+        </div>
 
         <div
           v-if="testStatus"

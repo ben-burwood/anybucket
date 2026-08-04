@@ -9,8 +9,12 @@ import WindowControls from "./components/WindowControls.vue";
 import WindowResizers from "./components/WindowResizers.vue";
 import DownloadToasts from "./components/DownloadToasts.vue";
 
+import { computed } from "vue";
+
 const conns = useConnections();
 onMounted(() => conns.refresh());
+
+const readWrite = computed(() => conns.state.active?.mode === "readWrite");
 
 // Double-clicking the empty titlebar area maximizes/restores, like a native one.
 function onTitlebarDblClick(e: MouseEvent) {
@@ -38,9 +42,19 @@ function onTitlebarDblClick(e: MouseEvent) {
         />
         AnyBucket
         <span
-          class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-slate-500 dark:bg-night-800 dark:text-slate-400"
+          class="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
+          :class="
+            readWrite
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+              : 'bg-slate-100 text-slate-500 dark:bg-night-800 dark:text-slate-400'
+          "
+          :title="
+            readWrite
+              ? 'Writes enabled for the active connection'
+              : 'The active connection is read-only'
+          "
         >
-          read-only
+          {{ readWrite ? "read-write" : "read-only" }}
         </span>
       </RouterLink>
 

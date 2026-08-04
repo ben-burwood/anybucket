@@ -1,6 +1,6 @@
 use aws_sdk_s3::Client;
 
-use crate::connections::{Connection, ConnectionStore};
+use crate::connections::{AccessMode, Connection, ConnectionStore};
 use crate::error::{AppError, AppResult};
 use crate::s3;
 
@@ -28,6 +28,13 @@ impl AppState {
             .active_id()
             .ok_or(AppError::NoActiveConnection)?;
         self.store.get(id).cloned()
+    }
+
+    pub fn require_writable(&self) -> AppResult<()> {
+        match self.active_connection()?.mode {
+            AccessMode::ReadWrite => Ok(()),
+            AccessMode::ReadOnly => Err(AppError::ReadOnly),
+        }
     }
 
     /// Return an S3 client for the active connection, building and caching it on
