@@ -14,7 +14,6 @@ const props = withDefaults(
     /** Error surfaced from the action, shown in red above the buttons. */
     error?: string | null;
     confirmLabel?: string;
-    cancelLabel?: string;
     /** Style the confirm button as a destructive (rose) action. */
     danger?: boolean;
   }>(),
@@ -24,7 +23,6 @@ const props = withDefaults(
     progressText: null,
     error: null,
     confirmLabel: "Confirm",
-    cancelLabel: "Cancel",
     danger: false,
   },
 );
@@ -94,7 +92,7 @@ watch(
             :disabled="busy"
             @click="cancel"
           >
-            {{ cancelLabel }}
+            Cancel
           </button>
           <button
             type="button"

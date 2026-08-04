@@ -78,6 +78,13 @@ async function copyCurrentUri() {
   window.setTimeout(() => (uriCopied.value = false), 1500);
 }
 
+/** Re-list the current folder and drop the now-stale cached bucket metrics.
+ * Run after any mutation (new folder, upload, delete). */
+async function refreshAfterMutation() {
+  await refresh();
+  metricsCache.invalidate(conns.state.active?.id, props.bucket);
+}
+
 // --- New folder ----------------------------------------------------------
 
 // Inline "new folder" form (read-write only): a small popover with a name input.
@@ -115,8 +122,7 @@ async function createFolder() {
   try {
     await s3.createFolder(props.bucket, props.prefix, name);
     closeFolderMenu();
-    await refresh();
-    metricsCache.invalidate(conns.state.active?.id, props.bucket);
+    await refreshAfterMutation();
   } catch (e) {
     folderError.value = errorMessage(e);
   } finally {
@@ -173,8 +179,7 @@ async function confirmDelete() {
     deleteModalOpen.value = false;
     gridApi?.deselectAll();
     selectedRows.value = [];
-    await refresh();
-    metricsCache.invalidate(conns.state.active?.id, props.bucket);
+    await refreshAfterMutation();
   } catch (e) {
     deleteError.value = errorMessage(e);
   } finally {
@@ -232,9 +237,7 @@ async function uploadFiles(paths: string[]) {
       uploads.start(props.bucket, f.key, f.srcPath, f.relKey, f.size),
     );
 
-    // Reflect the new objects and drop the now-stale cached bucket metrics.
-    await refresh();
-    metricsCache.invalidate(conns.state.active?.id, props.bucket);
+    await refreshAfterMutation();
   } finally {
     uploading.value = false;
   }
