@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { useUploads } from "../store/useUploads";
 import { formatSize } from "../utils/format";
+import ToastCountdown from "./ToastCountdown.vue";
 import type { UploadTask } from "../store/useUploads";
 
 const uploads = useUploads();
@@ -60,6 +61,8 @@ const tasks = computed(() => uploads.state.tasks);
           </span>
         </p>
       </div>
+
+      <ToastCountdown v-if="t.done" />
     </div>
   </div>
 </template>

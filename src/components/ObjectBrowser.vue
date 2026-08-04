@@ -27,7 +27,7 @@ import { useUploads } from "../store/useUploads";
 import { useBucketMetrics } from "../store/useBucketMetrics";
 import * as s3 from "../api/s3";
 import { type ObjectItem } from "../types";
-import { basename, fileType, formatDate, formatSize } from "../utils/format";
+import { fileType, formatDate, formatSize } from "../utils/format";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
 
@@ -81,44 +81,41 @@ const uploading = ref(false);
 // True while an OS drag is hovering the window (shows the drop overlay).
 const dragActive = ref(false);
 
-/** Open the native file picker and upload the chosen files here. */
-async function pickAndUpload() {
-  const selection = await open({ multiple: true });
+// Max concurrent uploads — a dropped folder can be hundreds of files, so we
+// cap in-flight PUTs rather than firing them all at once.
+const UPLOAD_CONCURRENCY = 5;
+// Above this many files we skip the per-file existence check (which is one HEAD
+// each) and show a single generic overwrite warning instead.
+const OVERWRITE_CHECK_LIMIT = 100;
+
+/** Open the native picker (files, or whole folders) and upload the selection. */
+async function pickAndUpload(directory: boolean) {
+  const selection = await open({ multiple: true, directory });
   if (!selection) return;
-  const paths = Array.isArray(selection) ? selection : [selection];
-  await uploadFiles(paths);
+  await uploadFiles(Array.isArray(selection) ? selection : [selection]);
 }
 
 /**
- * Upload `paths` into the current folder (key = prefix + filename). Warns before
- * overwriting any existing keys, then refreshes the listing + metrics on finish.
+ * Expand dropped/picked `paths` (files or folders) into their files, warn before
+ * overwriting, upload them (structure preserved, concurrency-capped), then
+ * refresh the listing + metrics.
  */
 async function uploadFiles(paths: string[]) {
   if (!canWrite.value || paths.length === 0 || uploading.value) return;
   uploading.value = true;
   try {
-    const files = paths.map((path) => {
-      const name = basename(path);
-      return { path, name, key: `${props.prefix}${name}` };
-    });
+    const entries = await s3.expandUploadPaths(paths);
+    const files = entries.map((e) => ({
+      ...e,
+      key: `${props.prefix}${e.relKey}`,
+    }));
+    if (files.length === 0) return;
 
-    // Warn before clobbering existing objects; cancel aborts the whole batch.
-    const existing = await Promise.all(
-      files.map((f) => s3.objectExists(props.bucket, f.key).catch(() => false)),
-    );
-    const collisions = files.filter((_, i) => existing[i]).map((f) => f.name);
-    if (collisions.length > 0) {
-      const list = collisions.slice(0, 10).join("\n");
-      const more =
-        collisions.length > 10 ? `\n…and ${collisions.length - 10} more` : "";
-      const ok = confirm(
-        `${collisions.length} file(s) already exist here and will be overwritten:\n\n${list}${more}\n\nContinue?`,
-      );
-      if (!ok) return;
-    }
+    if (!(await confirmOverwrite(files))) return;
 
-    await Promise.all(
-      files.map((f) => uploads.start(props.bucket, f.key, f.path, f.name)),
+    // Concurrency-capped upload; `uploads.start` resolves per file (never throws).
+    await runWithLimit(files, UPLOAD_CONCURRENCY, (f) =>
+      uploads.start(props.bucket, f.key, f.srcPath, f.relKey, f.size),
     );
 
     // Reflect the new objects and drop the now-stale cached bucket metrics.
@@ -127,6 +124,47 @@ async function uploadFiles(paths: string[]) {
   } finally {
     uploading.value = false;
   }
+}
+
+/** Confirm overwriting existing keys. Returns false only if the user cancels. */
+async function confirmOverwrite(
+  files: { key: string; relKey: string }[],
+): Promise<boolean> {
+  // Big batches (whole folders): one generic warning, no HEAD-per-file storm.
+  if (files.length > OVERWRITE_CHECK_LIMIT) {
+    return confirm(
+      `Upload ${files.length} files here? Any existing files with the same names will be overwritten.`,
+    );
+  }
+
+  const existing = await Promise.all(
+    files.map((f) => s3.objectExists(props.bucket, f.key).catch(() => false)),
+  );
+  const collisions = files.filter((_, i) => existing[i]).map((f) => f.relKey);
+  if (collisions.length === 0) return true;
+
+  const list = collisions.slice(0, 10).join("\n");
+  const more =
+    collisions.length > 10 ? `\n…and ${collisions.length - 10} more` : "";
+  return confirm(
+    `${collisions.length} file(s) already exist here and will be overwritten:\n\n${list}${more}\n\nContinue?`,
+  );
+}
+
+/** Run `worker` over `items` with at most `limit` in flight at once. */
+async function runWithLimit<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const runners = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (next < items.length) await worker(items[next++]);
+    },
+  );
+  await Promise.all(runners);
 }
 
 // Native OS drag-and-drop (Tauri webview), which yields filesystem paths — the
@@ -407,15 +445,24 @@ watch(
         </div>
 
         <div class="ml-auto flex shrink-0 items-center gap-2">
-          <button
-            v-if="canWrite"
-            class="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
-            title="Upload files to this location"
-            :disabled="uploading"
-            @click="pickAndUpload"
-          >
-            {{ uploading ? "Uploading…" : "⬆ Upload" }}
-          </button>
+          <template v-if="canWrite">
+            <button
+              class="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
+              title="Upload files to this location"
+              :disabled="uploading"
+              @click="pickAndUpload(false)"
+            >
+              {{ uploading ? "Uploading…" : "⬆ Files" }}
+            </button>
+            <button
+              class="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
+              title="Upload a folder (contents uploaded, structure preserved)"
+              :disabled="uploading"
+              @click="pickAndUpload(true)"
+            >
+              ⬆ Folder
+            </button>
+          </template>
           <button
             class="rounded border px-2 py-0.5 text-xs"
             :class="
