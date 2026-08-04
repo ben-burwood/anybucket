@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as s3 from "../api/s3";
 import { useDownloads } from "../store/useDownloads";
@@ -18,6 +18,25 @@ const httpsUrl = ref<string>("");
 const presigned = ref<string | null>(null);
 const busy = ref(false);
 const error = ref<string | null>(null);
+
+// Presigned-URL lifetime. AWS SigV4 caps presigned URLs at 7 days.
+const MAX_TTL_SECS = 7 * 24 * 60 * 60;
+const TTL_UNITS = {
+  minutes: 60,
+  hours: 60 * 60,
+  days: 24 * 60 * 60,
+} as const;
+type TtlUnit = keyof typeof TTL_UNITS;
+
+const ttlValue = ref(15);
+const ttlUnit = ref<TtlUnit>("minutes");
+
+// Clamp to (0, MAX_TTL_SECS]. Returns null for invalid (non-positive) input.
+const ttlSecs = computed<number | null>(() => {
+  const raw = Math.floor(Number(ttlValue.value) * TTL_UNITS[ttlUnit.value]);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  return Math.min(raw, MAX_TTL_SECS);
+});
 
 async function loadDetails() {
   meta.value = null;
@@ -38,13 +57,17 @@ async function loadDetails() {
 }
 
 async function generatePresigned() {
+  if (ttlSecs.value === null) {
+    error.value = "Enter a positive expiry time.";
+    return;
+  }
   busy.value = true;
   error.value = null;
   try {
     presigned.value = await s3.presignGet(
       props.bucket,
       props.object.key,
-      undefined,
+      ttlSecs.value,
       props.object.versionId,
     );
   } catch (e) {
@@ -146,17 +169,31 @@ onMounted(loadDetails);
 
       <!-- Presigned URL (not applicable to delete markers) -->
       <div v-if="!object.isDeleteMarker">
-        <div class="mb-1 flex items-center justify-between">
-          <span class="text-xs font-medium text-slate-500"
-            >Presigned URL (15 min)</span
-          >
-          <button
-            class="rounded border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
-            :disabled="busy"
-            @click="generatePresigned"
-          >
-            {{ busy ? "…" : "Generate" }}
-          </button>
+        <div class="mb-1 flex items-center justify-between gap-2">
+          <span class="shrink-0 text-xs font-medium text-slate-500">Presigned URL</span>
+          <div class="flex items-center gap-1">
+            <input
+              v-model.number="ttlValue"
+              type="number"
+              min="1"
+              class="w-14 rounded border border-slate-200 px-1.5 py-0.5 text-xs dark:border-night-700 dark:bg-night-800"
+            />
+            <select
+              v-model="ttlUnit"
+              class="rounded border border-slate-200 px-1 py-0.5 text-xs dark:border-night-700 dark:bg-night-800"
+            >
+              <option value="minutes">min</option>
+              <option value="hours">hr</option>
+              <option value="days">day</option>
+            </select>
+            <button
+              class="rounded border border-slate-200 px-2 py-0.5 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
+              :disabled="busy"
+              @click="generatePresigned"
+            >
+              {{ busy ? "…" : "Generate" }}
+            </button>
+          </div>
         </div>
         <CopyableValue v-if="presigned" :value="presigned">
           <button
