@@ -1,7 +1,7 @@
 {
   "name": "anybucket",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Read-only desktop explorer for S3-compatible object stores",
   "scripts": {

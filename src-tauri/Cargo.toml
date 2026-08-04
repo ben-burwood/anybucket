@@ -1,6 +1,6 @@
 [package]
 name = "anybucket"
-version = "0.1.0"
+version = "0.2.0"
 description = "Read-only desktop explorer for S3-compatible object stores"
 authors = ["Ben Burwood"]
 edition = "2021"
