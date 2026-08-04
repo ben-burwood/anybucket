@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -26,7 +26,7 @@ import { useConnections } from "../store/useConnections";
 import { useUploads } from "../store/useUploads";
 import { useBucketMetrics } from "../store/useBucketMetrics";
 import * as s3 from "../api/s3";
-import { type ObjectItem } from "../types";
+import { errorMessage, type ObjectItem } from "../types";
 import { fileType, formatDate, formatSize } from "../utils/format";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
@@ -73,6 +73,52 @@ async function copyCurrentUri() {
   await writeText(`s3://${props.bucket}/${props.prefix}`);
   uriCopied.value = true;
   window.setTimeout(() => (uriCopied.value = false), 1500);
+}
+
+// --- New folder ----------------------------------------------------------
+
+// Inline "new folder" form (read-write only): a small popover with a name input.
+const folderMenuOpen = ref(false);
+const newFolderName = ref("");
+const folderError = ref<string | null>(null);
+const creatingFolder = ref(false);
+const folderInput = ref<HTMLInputElement | null>(null);
+
+function openFolderMenu() {
+  folderMenuOpen.value = true;
+  folderError.value = null;
+  nextTick(() => folderInput.value?.focus());
+}
+
+function closeFolderMenu() {
+  folderMenuOpen.value = false;
+  newFolderName.value = "";
+  folderError.value = null;
+}
+
+/** Create an empty folder here (a zero-byte marker), then refresh listing + metrics. */
+async function createFolder() {
+  const name = newFolderName.value.trim();
+  if (!name) {
+    folderError.value = "Enter a folder name.";
+    return;
+  }
+  if (name.includes("/")) {
+    folderError.value = "Name cannot contain “/”.";
+    return;
+  }
+  creatingFolder.value = true;
+  folderError.value = null;
+  try {
+    await s3.createFolder(props.bucket, props.prefix, name);
+    closeFolderMenu();
+    await refresh();
+    metricsCache.invalidate(conns.state.active?.id, props.bucket);
+  } catch (e) {
+    folderError.value = errorMessage(e);
+  } finally {
+    creatingFolder.value = false;
+  }
 }
 
 // --- Uploads -------------------------------------------------------------
@@ -452,6 +498,52 @@ watch(
         </div>
 
         <div class="ml-auto flex shrink-0 items-center gap-2">
+          <div v-if="canWrite" class="relative">
+            <button
+              class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
+              title="Create a new folder in this location"
+              @click="folderMenuOpen ? closeFolderMenu() : openFolderMenu()"
+            >
+              ＋ New Folder
+            </button>
+            <template v-if="folderMenuOpen">
+              <!-- Click-catcher: closes the popover on any outside click. -->
+              <div class="fixed inset-0 z-40" @click="closeFolderMenu" />
+              <div
+                class="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-slate-200 bg-white p-2 text-xs shadow-lg dark:border-night-700 dark:bg-night-900"
+              >
+                <input
+                  ref="folderInput"
+                  v-model="newFolderName"
+                  type="text"
+                  placeholder="Folder name"
+                  spellcheck="false"
+                  autocomplete="off"
+                  class="w-full rounded border border-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-night-700 dark:bg-night-800"
+                  @keydown.enter="createFolder"
+                  @keydown.esc="closeFolderMenu"
+                />
+                <p v-if="folderError" class="mt-1 text-rose-600 dark:text-rose-400">
+                  {{ folderError }}
+                </p>
+                <div class="mt-2 flex justify-end gap-1.5">
+                  <button
+                    class="rounded px-2 py-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-night-800"
+                    @click="closeFolderMenu"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    class="rounded bg-emerald-600 px-2 py-1 font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                    :disabled="creatingFolder"
+                    @click="createFolder"
+                  >
+                    {{ creatingFolder ? "Creating…" : "Create" }}
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
           <div v-if="canWrite" class="relative">
             <button
               class="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"

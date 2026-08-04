@@ -120,6 +120,19 @@ export function uploadObject(
 }
 
 /**
+ * Create an empty "folder" (a zero-byte `prefix + name + "/"` marker) at the
+ * current location. Fails if the active connection is read-only. Returns the
+ * new folder's key.
+ */
+export function createFolder(
+  bucket: string,
+  prefix: string,
+  name: string,
+): Promise<string> {
+  return invoke("create_folder", { bucket, prefix, name });
+}
+
+/**
  * Compute exact size + object count by fully scanning the bucket. `onProgress`
  * receives throttled running totals and a terminal `done` event.
  */

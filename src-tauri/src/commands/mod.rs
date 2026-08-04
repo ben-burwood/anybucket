@@ -237,6 +237,36 @@ pub async fn object_exists(bucket: String, key: String, state: Shared<'_>) -> Ap
     ops::object_exists(&client, &bucket, &key).await
 }
 
+/// Create an empty "folder" by writing a zero-byte marker object at
+/// `prefix + name + "/"`. S3 has no real directories — this marker makes the
+/// (otherwise empty) folder appear in listings. Returns the new folder key.
+#[tauri::command]
+pub async fn create_folder(
+    bucket: String,
+    prefix: String,
+    name: String,
+    state: Shared<'_>,
+) -> AppResult<String> {
+    // Enforce the mode gate before doing anything else.
+    {
+        let st = state.lock().await;
+        st.require_writable()?;
+    }
+
+    let name = name.trim().trim_matches('/');
+    if name.is_empty() {
+        return Err(AppError::Other("folder name is required".into()));
+    }
+    if name.contains('/') {
+        return Err(AppError::Other("folder name cannot contain '/'".into()));
+    }
+
+    let key = format!("{prefix}{name}/");
+    let client = client_for_active(&state).await?;
+    ops::put_object(&client, &bucket, &key, ByteStream::from_static(b""), None).await?;
+    Ok(key)
+}
+
 /// Flatten dropped/picked paths into the concrete files to upload. A file yields
 /// one entry (`relKey` = its name); a directory is walked recursively, each file
 /// keeping its `folderName/sub/path` layout so structure is preserved in S3.
