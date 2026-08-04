@@ -2,6 +2,7 @@ import { reactive } from "vue";
 import { save } from "@tauri-apps/plugin-dialog";
 import * as s3 from "../api/s3";
 import { errorMessage } from "../types";
+import { AUTO_DISMISS_MS } from "../constants";
 
 export interface DownloadTask {
   id: string;
@@ -67,6 +68,7 @@ async function start(
     task.done = true;
     task.error = errorMessage(e);
   }
+  setTimeout(() => dismiss(task.id), AUTO_DISMISS_MS);
 }
 
 function dismiss(id: string): void {

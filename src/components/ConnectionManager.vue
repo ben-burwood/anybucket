@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import * as api from "../api/connections";
 import { useConnections } from "../store/useConnections";
 import { errorMessage, type Connection, type ConnectionInput } from "../types";
+import AccessModeChip from "./AccessModeChip.vue";
 
 const conns = useConnections();
 
@@ -55,6 +56,7 @@ const emptyForm = (): ConnectionInput => ({
   forcePathStyle: false,
   accessKeyId: "",
   secretAccessKey: "",
+  mode: "readOnly",
 });
 
 const form = reactive<ConnectionInput>(emptyForm());
@@ -81,6 +83,7 @@ function editConnection(c: Connection) {
     forcePathStyle: c.forcePathStyle,
     accessKeyId: c.accessKeyId,
     secretAccessKey: "", // never returned; blank keeps the existing secret
+    mode: c.mode,
   });
   provider.value = inferProvider(c);
   editing.value = true;
@@ -172,6 +175,7 @@ onMounted(() => conns.refresh());
                 >
                   Active
                 </span>
+                <AccessModeChip :mode="c.mode" />
               </div>
               <p class="truncate text-xs text-slate-400">
                 {{ c.endpointUrl ?? "AWS S3" }} · {{ c.region }} ·
@@ -299,6 +303,39 @@ onMounted(() => conns.refresh());
             class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-night-700 dark:bg-night-900"
           />
         </label>
+
+        <!-- Access mode: gates all write operations (uploads, etc.). -->
+        <div>
+          <span class="mb-1 block text-xs font-medium text-slate-500">Access Mode</span>
+          <div
+            class="inline-flex rounded-md border border-slate-300 p-0.5 dark:border-night-700"
+          >
+            <button
+              type="button"
+              class="rounded px-3 py-1 text-xs font-medium transition"
+              :class="
+                form.mode === 'readOnly'
+                  ? 'bg-slate-200 text-slate-800 dark:bg-night-700 dark:text-slate-100'
+                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+              "
+              @click="form.mode = 'readOnly'"
+            >
+              Read-Only
+            </button>
+            <button
+              type="button"
+              class="rounded px-3 py-1 text-xs font-medium transition"
+              :class="
+                form.mode === 'readWrite'
+                  ? 'bg-amber-500 text-white'
+                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+              "
+              @click="form.mode = 'readWrite'"
+            >
+              Read-Write
+            </button>
+          </div>
+        </div>
 
         <div
           v-if="testStatus"

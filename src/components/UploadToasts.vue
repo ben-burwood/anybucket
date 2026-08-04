@@ -1,24 +1,25 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { useDownloads } from "../store/useDownloads";
+import { useUploads } from "../store/useUploads";
 import { formatSize } from "../utils/format";
 import ToastCountdown from "./ToastCountdown.vue";
-import type { DownloadTask } from "../store/useDownloads";
+import type { UploadTask } from "../store/useUploads";
 
-const downloads = useDownloads();
+const uploads = useUploads();
 
-function percent(t: DownloadTask): number | null {
+function percent(t: UploadTask): number | null {
   if (!t.total) return null;
-  return Math.min(100, Math.round((t.downloaded / t.total) * 100));
+  return Math.min(100, Math.round((t.uploaded / t.total) * 100));
 }
 
-const tasks = computed(() => downloads.state.tasks);
+const tasks = computed(() => uploads.state.tasks);
 </script>
 
 <template>
+  <!-- Bottom-left so the upload stack never overlaps the download stack. -->
   <div
     v-if="tasks.length"
-    class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2"
+    class="pointer-events-none fixed bottom-4 left-4 z-50 flex w-80 flex-col gap-2"
   >
     <div
       v-for="t in tasks"
@@ -26,11 +27,13 @@ const tasks = computed(() => downloads.state.tasks);
       class="pointer-events-auto rounded-lg border border-slate-200 bg-white p-3 shadow-lg dark:border-night-700 dark:bg-night-800"
     >
       <div class="flex items-start justify-between gap-2">
-        <p class="truncate text-sm font-medium" :title="t.name">{{ t.name }}</p>
+        <p class="truncate text-sm font-medium" :title="t.key">
+          ⬆ {{ t.name }}
+        </p>
         <button
           class="text-slate-400 hover:text-slate-600"
           title="Dismiss"
-          @click="downloads.dismiss(t.id)"
+          @click="uploads.dismiss(t.id)"
         >
           ✕
         </button>
@@ -50,10 +53,10 @@ const tasks = computed(() => downloads.state.tasks);
             t.error
           }}</span>
           <span v-else-if="t.done" class="text-emerald-600 dark:text-emerald-400"
-            >Done · {{ formatSize(t.downloaded) }}</span
+            >Uploaded · {{ formatSize(t.total || t.uploaded) }}</span
           >
           <span v-else>
-            {{ formatSize(t.downloaded) }}
+            {{ formatSize(t.uploaded) }}
             <template v-if="t.total"> / {{ formatSize(t.total) }} </template>
           </span>
         </p>

@@ -34,6 +34,12 @@ pub enum AppError {
     #[error("download failed: {0}")]
     Download(String),
 
+    #[error("the active connection is read-only")]
+    ReadOnly,
+
+    #[error("upload failed: {0}")]
+    Upload(String),
+
     #[error("{0}")]
     Other(String),
 }
@@ -49,6 +55,8 @@ impl AppError {
             AppError::S3(_) => "s3",
             AppError::Unsupported(_) => "unsupported",
             AppError::Download(_) => "download",
+            AppError::ReadOnly => "read_only",
+            AppError::Upload(_) => "upload",
             AppError::Other(_) => "other",
         }
     }

@@ -7,6 +7,8 @@ import type {
   ObjectMeta,
   ObjectUris,
   ScanProgress,
+  UploadEntry,
+  UploadProgress,
 } from "../types";
 
 export function listBuckets(): Promise<Bucket[]> {
@@ -79,6 +81,40 @@ export function downloadObject(
     key,
     dest,
     versionId: versionId ?? null,
+    onProgress: channel,
+  });
+}
+
+/** Whether an object already exists at `key` (used to warn before overwriting). */
+export function objectExists(bucket: string, key: string): Promise<boolean> {
+  return invoke("object_exists", { bucket, key });
+}
+
+/**
+ * Flatten dropped/picked paths into the files to upload. Files map to their own
+ * name; folders are walked recursively, preserving their structure in `relKey`.
+ */
+export function expandUploadPaths(paths: string[]): Promise<UploadEntry[]> {
+  return invoke("expand_upload_paths", { paths });
+}
+
+/**
+ * Upload the local file at `srcPath` to `bucket/key`, streaming throttled
+ * progress. Fails if the active connection is read-only, or picks multipart
+ * automatically for large files (both handled by the backend).
+ */
+export function uploadObject(
+  bucket: string,
+  key: string,
+  srcPath: string,
+  onProgress: (p: UploadProgress) => void,
+): Promise<void> {
+  const channel = new Channel<UploadProgress>();
+  channel.onmessage = onProgress;
+  return invoke("upload_object", {
+    bucket,
+    key,
+    srcPath,
     onProgress: channel,
   });
 }

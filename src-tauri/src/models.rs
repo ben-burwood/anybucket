@@ -99,6 +99,32 @@ pub struct DownloadProgress {
     pub error: Option<String>,
 }
 
+/// One local file to upload, produced by expanding a dropped/picked path.
+/// A plain file yields a single entry; a directory is walked recursively.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadEntry {
+    /// Absolute path of the file on disk.
+    pub src_path: String,
+    /// Key suffix relative to the drop target, `/`-separated. A bare file is its
+    /// own name; files under a folder keep `folderName/sub/path`.
+    pub rel_key: String,
+    pub size: u64,
+}
+
+/// Progress event streamed to the frontend during an upload.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadProgress {
+    pub key: String,
+    pub uploaded: u64,
+    /// Total bytes to upload (the local file size).
+    pub total: u64,
+    pub done: bool,
+    /// Set on the terminal event if the upload failed.
+    pub error: Option<String>,
+}
+
 /// Aggregate size + object count for a whole bucket, computed by fully paginating its keys.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

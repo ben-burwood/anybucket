@@ -8,6 +8,7 @@ import ThemeToggle from "./components/ThemeToggle.vue";
 import WindowControls from "./components/WindowControls.vue";
 import WindowResizers from "./components/WindowResizers.vue";
 import DownloadToasts from "./components/DownloadToasts.vue";
+import UploadToasts from "./components/UploadToasts.vue";
 
 const conns = useConnections();
 onMounted(() => conns.refresh());
@@ -37,11 +38,6 @@ function onTitlebarDblClick(e: MouseEvent) {
           class="inline-block h-5 w-5 rounded bg-gradient-to-b from-emerald-500 to-green-600"
         />
         AnyBucket
-        <span
-          class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-slate-500 dark:bg-night-800 dark:text-slate-400"
-        >
-          read-only
-        </span>
       </RouterLink>
 
       <div class="flex h-full items-center gap-2" data-tauri-drag-region>
@@ -57,6 +53,7 @@ function onTitlebarDblClick(e: MouseEvent) {
     </main>
 
     <DownloadToasts />
+    <UploadToasts />
     <WindowResizers />
   </div>
 </template>

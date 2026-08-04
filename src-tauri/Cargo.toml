@@ -1,7 +1,7 @@
 [package]
 name = "anybucket"
-version = "0.2.0"
-description = "Read-only desktop explorer for S3-compatible object stores"
+version = "0.3.0"
+description = "Desktop explorer for S3-compatible object stores"
 authors = ["Ben Burwood"]
 edition = "2021"
 rust-version = "1.77.2"

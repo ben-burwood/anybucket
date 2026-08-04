@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { AgGridVue } from "ag-grid-vue3";
 import {
   colorSchemeDark,
@@ -19,7 +22,11 @@ import {
   type Crumb,
 } from "../store/useBrowser";
 import { useTheme } from "../store/useTheme";
-import type { ObjectItem } from "../types";
+import { useConnections } from "../store/useConnections";
+import { useUploads } from "../store/useUploads";
+import { useBucketMetrics } from "../store/useBucketMetrics";
+import * as s3 from "../api/s3";
+import { type ObjectItem } from "../types";
 import { fileType, formatDate, formatSize } from "../utils/format";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
@@ -28,7 +35,14 @@ const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
 const { state, load, applyFilter, setVersions, refresh, loadMore } = useBrowser();
 
+const conns = useConnections();
+const uploads = useUploads();
+const metricsCache = useBucketMetrics();
+
 const { isDark } = useTheme();
+
+/** Uploads are only offered when the active connection is in read-write mode. */
+const canWrite = conns.canWrite;
 
 const selected = ref<ObjectItem | null>(null);
 const uriCopied = ref(false);
@@ -60,6 +74,125 @@ async function copyCurrentUri() {
   uriCopied.value = true;
   window.setTimeout(() => (uriCopied.value = false), 1500);
 }
+
+// --- Uploads -------------------------------------------------------------
+
+const uploading = ref(false);
+// True while an OS drag is hovering the window (shows the drop overlay).
+const dragActive = ref(false);
+// Whether the Upload button's files/folder menu is open.
+const uploadMenuOpen = ref(false);
+
+// Max concurrent uploads — a dropped folder can be hundreds of files, so we
+// cap in-flight PUTs rather than firing them all at once.
+const UPLOAD_CONCURRENCY = 5;
+// Above this many files we skip the per-file existence check (which is one HEAD
+// each) and show a single generic overwrite warning instead.
+const OVERWRITE_CHECK_LIMIT = 100;
+
+/**
+ * Open the native picker and upload the selection. A single native dialog can't
+ * offer both files and folders (especially on Windows), so `directory` selects
+ * the mode; the Upload button's little menu picks between them.
+ */
+async function pickAndUpload(directory: boolean) {
+  uploadMenuOpen.value = false;
+  const selection = await open({ multiple: true, directory });
+  if (!selection) return;
+  await uploadFiles(Array.isArray(selection) ? selection : [selection]);
+}
+
+/**
+ * Expand dropped/picked `paths` (files or folders) into their files, warn before
+ * overwriting, upload them (structure preserved, concurrency-capped), then
+ * refresh the listing + metrics.
+ */
+async function uploadFiles(paths: string[]) {
+  if (!canWrite.value || paths.length === 0 || uploading.value) return;
+  uploading.value = true;
+  try {
+    const entries = await s3.expandUploadPaths(paths);
+    const files = entries.map((e) => ({
+      ...e,
+      key: `${props.prefix}${e.relKey}`,
+    }));
+    if (files.length === 0) return;
+
+    if (!(await confirmOverwrite(files))) return;
+
+    // Concurrency-capped upload; `uploads.start` resolves per file (never throws).
+    await runWithLimit(files, UPLOAD_CONCURRENCY, (f) =>
+      uploads.start(props.bucket, f.key, f.srcPath, f.relKey, f.size),
+    );
+
+    // Reflect the new objects and drop the now-stale cached bucket metrics.
+    await refresh();
+    metricsCache.invalidate(conns.state.active?.id, props.bucket);
+  } finally {
+    uploading.value = false;
+  }
+}
+
+/** Confirm overwriting existing keys. Returns false only if the user cancels. */
+async function confirmOverwrite(
+  files: { key: string; relKey: string }[],
+): Promise<boolean> {
+  // Big batches (whole folders): one generic warning, no HEAD-per-file storm.
+  if (files.length > OVERWRITE_CHECK_LIMIT) {
+    return confirm(
+      `Upload ${files.length} files here? Any existing files with the same names will be overwritten.`,
+    );
+  }
+
+  const existing = await Promise.all(
+    files.map((f) => s3.objectExists(props.bucket, f.key).catch(() => false)),
+  );
+  const collisions = files.filter((_, i) => existing[i]).map((f) => f.relKey);
+  if (collisions.length === 0) return true;
+
+  const list = collisions.slice(0, 10).join("\n");
+  const more =
+    collisions.length > 10 ? `\n…and ${collisions.length - 10} more` : "";
+  return confirm(
+    `${collisions.length} file(s) already exist here and will be overwritten:\n\n${list}${more}\n\nContinue?`,
+  );
+}
+
+/** Run `worker` over `items` with at most `limit` in flight at once. */
+async function runWithLimit<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const runners = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (next < items.length) await worker(items[next++]);
+    },
+  );
+  await Promise.all(runners);
+}
+
+// Native OS drag-and-drop (Tauri webview), which yields filesystem paths — the
+// backend reads from disk, so we never move file bytes across the IPC boundary.
+let unlistenDrag: UnlistenFn | undefined;
+
+onMounted(async () => {
+  unlistenDrag = await getCurrentWebview().onDragDropEvent((event) => {
+    const p = event.payload;
+    if (p.type === "enter" || p.type === "over") {
+      if (canWrite.value) dragActive.value = true;
+    } else if (p.type === "leave") {
+      dragActive.value = false;
+    } else if (p.type === "drop") {
+      dragActive.value = false;
+      if (canWrite.value && p.paths.length) uploadFiles(p.paths);
+    }
+  });
+});
+
+onBeforeUnmount(() => unlistenDrag?.());
 
 interface Row {
   kind: "folder" | "file";
@@ -252,7 +385,23 @@ watch(
 <template>
   <div class="flex h-full">
     <!-- Main browser -->
-    <div class="flex min-w-0 flex-1 flex-col">
+    <div class="relative flex min-w-0 flex-1 flex-col">
+      <!-- Drag-and-drop overlay (read-write only) -->
+      <div
+        v-if="dragActive"
+        class="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-emerald-500/10 backdrop-blur-[1px]"
+      >
+        <div
+          class="rounded-xl border-2 border-dashed border-emerald-500 bg-white/90 px-6 py-4 text-center shadow-lg dark:bg-night-900/90"
+        >
+          <p class="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+            ⬆ Drop files or folders to upload
+          </p>
+          <p class="mt-0.5 truncate text-xs text-slate-500" :title="`s3://${bucket}/${prefix}`">
+            to s3://{{ bucket }}/{{ prefix }}
+          </p>
+        </div>
+      </div>
       <!-- Breadcrumb -->
       <div
         class="flex items-center gap-1 border-b border-slate-200 px-4 py-2 text-sm dark:border-night-800"
@@ -303,6 +452,37 @@ watch(
         </div>
 
         <div class="ml-auto flex shrink-0 items-center gap-2">
+          <div v-if="canWrite" class="relative">
+            <button
+              class="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
+              title="Upload files or a folder to this location"
+              :disabled="uploading"
+              @click="uploadMenuOpen = !uploadMenuOpen"
+            >
+              {{ uploading ? "Uploading…" : "⬆ Upload" }}
+            </button>
+            <template v-if="uploadMenuOpen">
+              <!-- Click-catcher: closes the menu on any outside click. -->
+              <div class="fixed inset-0 z-40" @click="uploadMenuOpen = false" />
+              <div
+                class="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-md border border-slate-200 bg-white py-1 text-xs shadow-lg dark:border-night-700 dark:bg-night-900"
+              >
+                <button
+                  class="block w-full px-3 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-night-800"
+                  @click="pickAndUpload(false)"
+                >
+                  📄 Files…
+                </button>
+                <button
+                  class="block w-full px-3 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-night-800"
+                  title="Contents uploaded, folder structure preserved"
+                  @click="pickAndUpload(true)"
+                >
+                  📁 Folder…
+                </button>
+              </div>
+            </template>
+          </div>
           <button
             class="rounded border px-2 py-0.5 text-xs"
             :class="

@@ -1,8 +1,10 @@
 use aws_sdk_s3::operation::get_object::GetObjectOutput;
+use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
 use aws_sdk_s3::Client;
 use aws_smithy_types::date_time::Format;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::{Bucket, Folder, Listing, ListParams, ObjectItem, ObjectMeta};
 
 /// Default page size for object listings.
@@ -262,6 +264,156 @@ pub async fn get_object_stream(
         .set_version_id(version_id.map(str::to_string))
         .send()
         .await?)
+}
+
+// ---------------------------------------------------------------------------
+// Writes (uploads)
+// ---------------------------------------------------------------------------
+
+/// Whether an object already exists at `key`, distinguishing a genuine 404 (→
+/// `false`) from a real error (surfaced). Used to warn before overwriting.
+pub async fn object_exists(client: &Client, bucket: &str, key: &str) -> AppResult<bool> {
+    match client.head_object().bucket(bucket).key(key).send().await {
+        Ok(_) => Ok(true),
+        Err(err) => {
+            if let Some(svc) = err.as_service_error() {
+                if svc.is_not_found() {
+                    return Ok(false);
+                }
+            }
+            Err(err.into())
+        }
+    }
+}
+
+/// Single-shot upload of an in-memory body (small files).
+pub async fn put_object(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    body: ByteStream,
+    content_type: Option<&str>,
+) -> AppResult<()> {
+    client
+        .put_object()
+        .bucket(bucket)
+        .key(key)
+        .body(body)
+        .set_content_type(content_type.map(str::to_string))
+        .send()
+        .await?;
+    Ok(())
+}
+
+/// Begin a multipart upload, returning the upload id used by the part calls.
+pub async fn create_multipart_upload(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    content_type: Option<&str>,
+) -> AppResult<String> {
+    let out = client
+        .create_multipart_upload()
+        .bucket(bucket)
+        .key(key)
+        .set_content_type(content_type.map(str::to_string))
+        .send()
+        .await?;
+    out.upload_id()
+        .map(str::to_string)
+        .ok_or_else(|| AppError::Upload("provider returned no multipart upload id".into()))
+}
+
+/// Upload one part and return the `CompletedPart` (etag + number) for completion.
+pub async fn upload_part(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+    part_number: i32,
+    body: ByteStream,
+) -> AppResult<CompletedPart> {
+    let out = client
+        .upload_part()
+        .bucket(bucket)
+        .key(key)
+        .upload_id(upload_id)
+        .part_number(part_number)
+        .body(body)
+        .send()
+        .await?;
+    Ok(CompletedPart::builder()
+        .set_e_tag(out.e_tag().map(str::to_string))
+        .part_number(part_number)
+        .build())
+}
+
+/// Finalize a multipart upload from the collected parts.
+pub async fn complete_multipart_upload(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+    parts: Vec<CompletedPart>,
+) -> AppResult<()> {
+    let completed = CompletedMultipartUpload::builder()
+        .set_parts(Some(parts))
+        .build();
+    client
+        .complete_multipart_upload()
+        .bucket(bucket)
+        .key(key)
+        .upload_id(upload_id)
+        .multipart_upload(completed)
+        .send()
+        .await?;
+    Ok(())
+}
+
+/// Best-effort cleanup of a failed multipart upload (leaves no dangling parts).
+pub async fn abort_multipart_upload(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+) -> AppResult<()> {
+    client
+        .abort_multipart_upload()
+        .bucket(bucket)
+        .key(key)
+        .upload_id(upload_id)
+        .send()
+        .await?;
+    Ok(())
+}
+
+/// Coarse content-type guess from a key's extension; `None` lets S3 default to
+/// `application/octet-stream`.
+pub fn guess_content_type(key: &str) -> Option<&'static str> {
+    let ext = key.rsplit('.').next()?.to_ascii_lowercase();
+    let ct = match ext.as_str() {
+        "txt" | "log" | "md" => "text/plain",
+        "json" => "application/json",
+        "csv" => "text/csv",
+        "xml" => "application/xml",
+        "html" | "htm" => "text/html",
+        "css" => "text/css",
+        "js" | "mjs" => "text/javascript",
+        "pdf" => "application/pdf",
+        "zip" => "application/zip",
+        "gz" | "gzip" => "application/gzip",
+        "tar" => "application/x-tar",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "mp4" => "video/mp4",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        _ => return None,
+    };
+    Some(ct)
 }
 
 /// `logs/2026/` with prefix `logs/` → `2026`.

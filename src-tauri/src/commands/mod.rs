@@ -1,3 +1,6 @@
+use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::types::CompletedPart;
+use aws_smithy_types::byte_stream::Length;
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::State;
@@ -8,6 +11,7 @@ use crate::connections::{Connection, ConnectionInput};
 use crate::error::{AppError, AppResult};
 use crate::models::{
     Bucket, BucketMetrics, DownloadProgress, Listing, ListParams, ObjectMeta, ScanProgress,
+    UploadEntry, UploadProgress,
 };
 use crate::s3::{self, metrics, ops};
 use crate::state::AppState;
@@ -17,6 +21,11 @@ const DEFAULT_PRESIGN_SECS: u64 = 900;
 
 /// Emit progress at most every 256 KiB to avoid flooding the IPC channel.
 const PROGRESS_STEP: u64 = 256 * 1024;
+
+/// Files at or below this size go up in a single `PutObject`; larger files use
+/// multipart. Also the per-part size (≥ S3's 5 MiB minimum).
+const MULTIPART_THRESHOLD: u64 = 16 * 1024 * 1024;
+const PART_SIZE: u64 = 16 * 1024 * 1024;
 
 type Shared<'a> = State<'a, Mutex<AppState>>;
 
@@ -214,6 +223,229 @@ pub async fn download_object(
         error: None,
     });
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Writes (uploads)
+// ---------------------------------------------------------------------------
+
+/// Whether an object already exists at `key` under the active connection. Used
+/// by the UI to warn before an upload would overwrite existing data.
+#[tauri::command]
+pub async fn object_exists(bucket: String, key: String, state: Shared<'_>) -> AppResult<bool> {
+    let client = client_for_active(&state).await?;
+    ops::object_exists(&client, &bucket, &key).await
+}
+
+/// Flatten dropped/picked paths into the concrete files to upload. A file yields
+/// one entry (`relKey` = its name); a directory is walked recursively, each file
+/// keeping its `folderName/sub/path` layout so structure is preserved in S3.
+///
+/// Pure local-disk enumeration (no S3), so it is not mode-gated — the uploads it
+/// feeds are gated individually by [`upload_object`].
+#[tauri::command]
+pub async fn expand_upload_paths(paths: Vec<String>) -> AppResult<Vec<UploadEntry>> {
+    let mut out = Vec::new();
+    for path in paths {
+        let p = std::path::PathBuf::from(&path);
+        let meta = tokio::fs::metadata(&p).await?;
+        if meta.is_dir() {
+            walk_dir(&p, &mut out).await?;
+        } else {
+            out.push(UploadEntry {
+                rel_key: p
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or(path.clone()),
+                src_path: path,
+                size: meta.len(),
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Iteratively walk `root`, appending every regular file as an `UploadEntry`
+/// keyed `root_name/<path relative to root>`. Symlinks are skipped (no cycles).
+async fn walk_dir(root: &std::path::Path, out: &mut Vec<UploadEntry>) -> AppResult<()> {
+    let root_name = root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let mut rd = tokio::fs::read_dir(&dir).await?;
+        while let Some(entry) = rd.next_entry().await? {
+            // `DirEntry::metadata` does not follow symlinks, so a symlinked dir is
+            // neither a dir nor a file here and is simply skipped (no cycles). It
+            // also yields the size, so it's the only stat needed per entry.
+            let meta = entry.metadata().await?;
+            let path = entry.path();
+            if meta.is_dir() {
+                stack.push(path);
+            } else if meta.is_file() {
+                let rel = path.strip_prefix(root).unwrap_or(&path);
+                let rel = rel.to_string_lossy().replace('\\', "/");
+                out.push(UploadEntry {
+                    rel_key: format!("{root_name}/{rel}"),
+                    src_path: path.to_string_lossy().into_owned(),
+                    size: meta.len(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Upload a local file at `src_path` to `bucket/key`, streaming throttled
+/// progress. Small files go up in one `PutObject`; large files use multipart.
+///
+/// Gated: fails with [`AppError::ReadOnly`] unless the active connection is in
+/// read-write mode — the authoritative write gate, independent of the UI.
+#[tauri::command]
+pub async fn upload_object(
+    bucket: String,
+    key: String,
+    src_path: String,
+    on_progress: Channel<UploadProgress>,
+    state: Shared<'_>,
+) -> AppResult<()> {
+    // Enforce the mode gate before doing anything else.
+    {
+        let st = state.lock().await;
+        st.require_writable()?;
+    }
+    let client = client_for_active(&state).await?;
+
+    let meta = tokio::fs::metadata(&src_path).await?;
+    // Defense-in-depth: callers expand directories via `expand_upload_paths`, so
+    // this command should only ever receive files. Reject a stray directory
+    // rather than misbehaving.
+    if meta.is_dir() {
+        let msg = format!("not a file: {src_path}");
+        let _ = on_progress.send(UploadProgress {
+            key: key.clone(),
+            uploaded: 0,
+            total: 0,
+            done: true,
+            error: Some(msg.clone()),
+        });
+        return Err(AppError::Upload(msg));
+    }
+    let total = meta.len();
+    let content_type = ops::guess_content_type(&key);
+
+    let result = if total <= MULTIPART_THRESHOLD {
+        upload_single(&client, &bucket, &key, &src_path, content_type).await
+    } else {
+        upload_multipart(&client, &bucket, &key, &src_path, content_type, total, &on_progress).await
+    };
+
+    // Terminal event so the UI can settle its progress line either way.
+    let (uploaded, error) = match &result {
+        Ok(()) => (total, None),
+        Err(e) => (0, Some(e.to_string())),
+    };
+    let _ = on_progress.send(UploadProgress {
+        key: key.clone(),
+        uploaded,
+        total,
+        done: true,
+        error,
+    });
+    result
+}
+
+/// PUT the file in one request, streamed from disk by the SDK (no whole-file
+/// buffering in memory).
+async fn upload_single(
+    client: &aws_sdk_s3::Client,
+    bucket: &str,
+    key: &str,
+    src_path: &str,
+    content_type: Option<&str>,
+) -> AppResult<()> {
+    let body = ByteStream::from_path(src_path)
+        .await
+        .map_err(|e| AppError::Upload(e.to_string()))?;
+    ops::put_object(client, bucket, key, body, content_type).await
+}
+
+/// Stream the file to S3 in `PART_SIZE` parts, emitting throttled progress and
+/// aborting the upload on any failure so no dangling parts are left behind.
+async fn upload_multipart(
+    client: &aws_sdk_s3::Client,
+    bucket: &str,
+    key: &str,
+    src_path: &str,
+    content_type: Option<&str>,
+    total: u64,
+    on_progress: &Channel<UploadProgress>,
+) -> AppResult<()> {
+    let upload_id = ops::create_multipart_upload(client, bucket, key, content_type).await?;
+
+    let parts = match stream_parts(client, bucket, key, &upload_id, src_path, total, on_progress)
+        .await
+    {
+        Ok(parts) => parts,
+        Err(e) => {
+            let _ = ops::abort_multipart_upload(client, bucket, key, &upload_id).await;
+            return Err(e);
+        }
+    };
+
+    if let Err(e) = ops::complete_multipart_upload(client, bucket, key, &upload_id, parts).await {
+        let _ = ops::abort_multipart_upload(client, bucket, key, &upload_id).await;
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Upload each part as a byte range streamed straight from disk by the SDK,
+/// returning the completed parts. Emits throttled progress between parts.
+async fn stream_parts(
+    client: &aws_sdk_s3::Client,
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+    src_path: &str,
+    total: u64,
+    on_progress: &Channel<UploadProgress>,
+) -> AppResult<Vec<CompletedPart>> {
+    let part_count = total.div_ceil(PART_SIZE);
+    let mut parts: Vec<CompletedPart> = Vec::with_capacity(part_count as usize);
+    let mut uploaded: u64 = 0;
+    let mut last_emitted: u64 = 0;
+
+    for i in 0..part_count {
+        let offset = i * PART_SIZE;
+        let len = PART_SIZE.min(total - offset); // the last part is short
+        let body = ByteStream::read_from()
+            .path(src_path)
+            .offset(offset)
+            .length(Length::Exact(len))
+            .build()
+            .await
+            .map_err(|e| AppError::Upload(e.to_string()))?;
+
+        let completed =
+            ops::upload_part(client, bucket, key, upload_id, (i + 1) as i32, body).await?;
+        parts.push(completed);
+        uploaded += len;
+
+        if uploaded - last_emitted >= PROGRESS_STEP {
+            last_emitted = uploaded;
+            let _ = on_progress.send(UploadProgress {
+                key: key.to_string(),
+                uploaded,
+                total,
+                done: false,
+                error: None,
+            });
+        }
+    }
+
+    Ok(parts)
 }
 
 // ---------------------------------------------------------------------------
