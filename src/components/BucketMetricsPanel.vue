@@ -1,21 +1,35 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { onMounted, ref, watch } from "vue";
 import * as s3 from "../api/s3";
+import { useBucketMetrics } from "../store/useBucketMetrics";
+import { useConnections } from "../store/useConnections";
 import { errorMessage, type BucketMetrics } from "../types";
 import { formatSize } from "../utils/format";
 
 const props = defineProps<{ bucket: string }>();
 
+const conns = useConnections();
+const metricsCache = useBucketMetrics();
+
 const error = ref<string | null>(null);
-/** Present once a scan has completed. */
+/** Present once a scan has completed (this session or restored from cache). */
 const metrics = ref<BucketMetrics | null>(null);
 /** Running totals while a scan is in flight. */
 const scanning = ref(false);
 const scanned = ref<{ objectCount: number; totalBytes: number } | null>(null);
 
+/** Show a cached scan for `bucket` if we have one; otherwise reset to idle. */
+function hydrate(bucket: string) {
+  error.value = null;
+  scanned.value = null;
+  scanning.value = false;
+  const cached = metricsCache.get(conns.state.active?.id, bucket);
+  metrics.value = cached ? cached.metrics : null;
+}
+
 /**
  * Full-bucket scan, streaming progress. Kept opt-in: it walks every key, so we
- * never start it automatically.
+ * never start it automatically. Completed results are cached for the session.
  */
 async function runScan() {
   scanning.value = true;
@@ -29,6 +43,7 @@ async function runScan() {
       }
     });
     metrics.value = result;
+    metricsCache.set(conns.state.active?.id, props.bucket, result);
   } catch (e) {
     error.value = errorMessage(e);
   } finally {
@@ -36,16 +51,10 @@ async function runScan() {
   }
 }
 
-// Switching buckets clears stale results; we don't auto-scan the new one.
-watch(
-  () => props.bucket,
-  () => {
-    error.value = null;
-    metrics.value = null;
-    scanned.value = null;
-    scanning.value = false;
-  },
-);
+// Switching buckets restores that bucket's cached scan (if any); we never
+// auto-scan a bucket that hasn't been scanned this session.
+watch(() => props.bucket, hydrate);
+onMounted(() => hydrate(props.bucket));
 </script>
 
 <template>

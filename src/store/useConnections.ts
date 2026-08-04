@@ -1,6 +1,8 @@
 import { reactive, readonly } from "vue";
 import * as api from "../api/connections";
 import { errorMessage, type Connection, type ConnectionInput } from "../types";
+import { useBuckets } from "./useBuckets";
+import { useBucketMetrics } from "./useBucketMetrics";
 
 interface ConnectionsState {
   connections: Connection[];
@@ -33,14 +35,22 @@ async function refresh(): Promise<void> {
   }
 }
 
+/** Drop any cached listings/scans for a connection whose config just changed. */
+function invalidateCaches(id: string): void {
+  useBuckets().invalidate(id);
+  useBucketMetrics().invalidateConnection(id);
+}
+
 async function save(input: ConnectionInput): Promise<Connection> {
   const conn = await api.saveConnection(input);
+  invalidateCaches(conn.id);
   await refresh();
   return conn;
 }
 
 async function remove(id: string): Promise<void> {
   await api.deleteConnection(id);
+  invalidateCaches(id);
   await refresh();
 }
 

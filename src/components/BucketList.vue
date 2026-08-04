@@ -1,57 +1,46 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
-import * as s3 from "../api/s3";
+import { useBuckets } from "../store/useBuckets";
 import { useConnections } from "../store/useConnections";
-import { errorMessage, isAppError, type Bucket } from "../types";
+import { type Bucket } from "../types";
 import { formatDate } from "../utils/format";
 
 const router = useRouter();
 const conns = useConnections();
+const bucketCache = useBuckets();
 
-const buckets = ref<Bucket[]>([]);
-const loading = ref(false);
-const error = ref<string | null>(null);
-const noConnection = ref(false);
+const activeId = computed(() => conns.state.active?.id);
 
-async function load() {
-  loading.value = true;
-  error.value = null;
-  noConnection.value = false;
-  try {
-    buckets.value = await s3.listBuckets();
-  } catch (e) {
-    if (isAppError(e) && e.kind === "no_active_connection") {
-      noConnection.value = true;
-    } else {
-      error.value = errorMessage(e);
-    }
-  } finally {
-    loading.value = false;
-  }
-}
+// Session cache: served instantly on revisit, revalidated in the background.
+const entry = computed(() => bucketCache.entryFor(activeId.value));
+const buckets = computed(() => entry.value.buckets);
+const loading = computed(() => entry.value.loading);
+const refreshing = computed(() => entry.value.refreshing);
+const error = computed(() => entry.value.error);
+const noConnection = computed(() => entry.value.noConnection);
 
 function open(bucket: Bucket) {
   router.push({ name: "browse", params: { bucket: bucket.name } });
 }
 
 // Reload when the active connection changes (e.g. switched from the header).
-watch(
-  () => conns.state.active?.id,
-  () => load(),
-);
+watch(activeId, (id) => bucketCache.ensure(id));
 
-onMounted(load);
+onMounted(() => bucketCache.ensure(activeId.value));
 </script>
 
 <template>
   <div class="h-full overflow-auto px-6 py-5">
     <div class="mb-4 flex items-center justify-between">
-      <h1 class="text-lg font-semibold">Buckets</h1>
+      <div class="flex items-center gap-2">
+        <h1 class="text-lg font-semibold">Buckets</h1>
+        <span v-if="refreshing" class="text-xs text-slate-400">Refreshing…</span>
+      </div>
       <button
         class="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
-        :disabled="loading"
-        @click="load"
+        :disabled="loading || refreshing"
+        @click="bucketCache.refresh(activeId)"
       >
         Refresh
       </button>
