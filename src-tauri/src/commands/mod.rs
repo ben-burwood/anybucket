@@ -512,10 +512,44 @@ pub async fn delete_objects(
     }
     let client = client_for_active(&state).await?;
 
-    // Track the running count outside the worker so a mid-way failure can still
-    // report how many objects were actually removed.
+    // Accumulate outside the worker so a mid-way failure can still report the
+    // partial count in the terminal event. Each batch is ≤ DELETE_BATCH_SIZE
+    // objects, so emitting once per batch is already a coarse enough throttle.
     let mut deleted: u64 = 0;
-    let result = delete_all(&client, &bucket, objects, prefixes, &on_progress, &mut deleted).await;
+    let emit = |total| {
+        let _ = on_progress.send(DeleteProgress {
+            deleted: total,
+            done: false,
+            error: None,
+        });
+    };
+    let result: AppResult<()> = async {
+        // Explicit objects (files / specific version rows), chunked to the limit.
+        for chunk in objects.chunks(DELETE_BATCH_SIZE) {
+            let ids = chunk
+                .iter()
+                .map(|t| {
+                    ObjectIdentifier::builder()
+                        .key(t.key.clone())
+                        .set_version_id(t.version_id.clone())
+                        .build()
+                        .map_err(|e| AppError::Delete(e.to_string()))
+                })
+                .collect::<AppResult<Vec<_>>>()?;
+            deleted += ops::delete_batch(&client, &bucket, ids).await?;
+            emit(deleted);
+        }
+        // Folders: the ops layer owns the list-and-delete pagination per prefix.
+        for prefix in &prefixes {
+            ops::delete_prefix(&client, &bucket, prefix, |n| {
+                deleted += n;
+                emit(deleted);
+            })
+            .await?;
+        }
+        Ok(())
+    }
+    .await;
 
     // Terminal event so the UI can settle its progress line either way.
     let error = result.as_ref().err().map(|e| e.to_string());
@@ -525,72 +559,6 @@ pub async fn delete_objects(
         error,
     });
     result.map(|()| deleted)
-}
-
-/// Do the actual deletes, accumulating into `deleted` and emitting a progress
-/// event after each batch. Kept separate so the caller can send a terminal event
-/// with the partial count even on failure.
-async fn delete_all(
-    client: &aws_sdk_s3::Client,
-    bucket: &str,
-    objects: Vec<DeleteTarget>,
-    prefixes: Vec<String>,
-    on_progress: &Channel<DeleteProgress>,
-    deleted: &mut u64,
-) -> AppResult<()> {
-    // Explicit objects (files / specific version rows), chunked to the API limit.
-    for chunk in objects.chunks(DELETE_BATCH_SIZE) {
-        let ids = chunk
-            .iter()
-            .map(|t| {
-                ObjectIdentifier::builder()
-                    .key(t.key.clone())
-                    .set_version_id(t.version_id.clone())
-                    .build()
-                    .map_err(|e| AppError::Delete(e.to_string()))
-            })
-            .collect::<AppResult<Vec<_>>>()?;
-        *deleted += ops::delete_batch(client, bucket, ids).await?;
-        emit_deleted(on_progress, *deleted);
-    }
-
-    // Recursive folder deletes: page each prefix, deleting one page per batch.
-    for prefix in &prefixes {
-        let mut token: Option<String> = None;
-        loop {
-            let (keys, next) =
-                ops::list_prefix_page(client, bucket, prefix, token.as_deref()).await?;
-            if !keys.is_empty() {
-                let ids = keys
-                    .into_iter()
-                    .map(|k| {
-                        ObjectIdentifier::builder()
-                            .key(k)
-                            .build()
-                            .map_err(|e| AppError::Delete(e.to_string()))
-                    })
-                    .collect::<AppResult<Vec<_>>>()?;
-                *deleted += ops::delete_batch(client, bucket, ids).await?;
-                emit_deleted(on_progress, *deleted);
-            }
-            match next {
-                Some(t) => token = Some(t),
-                None => break,
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Emit a non-terminal progress event with the running deleted count. Each batch
-/// is up to 1000 objects, so per-batch emission is already coarse enough not to
-/// flood the channel.
-fn emit_deleted(on_progress: &Channel<DeleteProgress>, deleted: u64) {
-    let _ = on_progress.send(DeleteProgress {
-        deleted,
-        done: false,
-        error: None,
-    });
 }
 
 // ---------------------------------------------------------------------------

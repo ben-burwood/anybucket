@@ -438,31 +438,56 @@ pub async fn delete_batch(
     Ok(out.deleted().len() as u64)
 }
 
-/// List one page of keys under `prefix`, recursing into subfolders (no
-/// delimiter). Returns this page's keys plus the continuation token for the next
-/// page, if the listing was truncated. Page size is capped at the S3 maximum so
-/// one page maps 1:1 to a single [`delete_batch`] call.
-pub async fn list_prefix_page(
+/// Recursively delete every object under `prefix` (no delimiter, so all
+/// subfolders are included), paging the listing and deleting each page as one
+/// batch. `on_batch` is called with the count deleted in each batch so the caller
+/// can surface running progress.
+///
+/// Owns the pagination loop in the ops layer (like [`crate::s3::metrics`]'s scan),
+/// keeping the command layer free of listing/continuation-token bookkeeping.
+pub async fn delete_prefix<F>(
     client: &Client,
     bucket: &str,
     prefix: &str,
-    token: Option<&str>,
-) -> AppResult<(Vec<String>, Option<String>)> {
-    let mut req = client
-        .list_objects_v2()
-        .bucket(bucket)
-        .prefix(prefix)
-        .max_keys(DEFAULT_MAX_KEYS);
-    if let Some(t) = token {
-        req = req.continuation_token(t);
+    mut on_batch: F,
+) -> AppResult<()>
+where
+    F: FnMut(u64),
+{
+    let mut token: Option<String> = None;
+    loop {
+        let mut req = client
+            .list_objects_v2()
+            .bucket(bucket)
+            .prefix(prefix)
+            .max_keys(DEFAULT_MAX_KEYS);
+        if let Some(t) = &token {
+            req = req.continuation_token(t);
+        }
+        let out = req.send().await?;
+
+        // One page (≤ DEFAULT_MAX_KEYS keys) maps 1:1 to a single DeleteObjects.
+        let ids = out
+            .contents()
+            .iter()
+            .filter_map(|o| o.key())
+            .map(|k| {
+                ObjectIdentifier::builder()
+                    .key(k)
+                    .build()
+                    .map_err(|e| AppError::Delete(e.to_string()))
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        if !ids.is_empty() {
+            on_batch(delete_batch(client, bucket, ids).await?);
+        }
+
+        match out.next_continuation_token() {
+            Some(t) => token = Some(t.to_string()),
+            None => break,
+        }
     }
-    let out = req.send().await?;
-    let keys = out
-        .contents()
-        .iter()
-        .filter_map(|o| o.key().map(str::to_string))
-        .collect();
-    Ok((keys, out.next_continuation_token().map(str::to_string)))
+    Ok(())
 }
 
 /// Coarse content-type guess from a key's extension; `None` lets S3 default to
