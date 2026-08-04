@@ -304,7 +304,7 @@ onMounted(() => conns.refresh());
           />
         </label>
 
-        <!-- Access mode: gates all write operations (uploads, etc.). -->
+        <!-- Access mode: gates writes (uploads, new folders) and deletes. -->
         <div>
           <span class="mb-1 block text-xs font-medium text-slate-500">Access Mode</span>
           <div
@@ -333,6 +333,18 @@ onMounted(() => conns.refresh());
               @click="form.mode = 'readWrite'"
             >
               Read-Write
+            </button>
+            <button
+              type="button"
+              class="rounded px-3 py-1 text-xs font-medium transition"
+              :class="
+                form.mode === 'readWriteDelete'
+                  ? 'bg-rose-600 text-white'
+                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+              "
+              @click="form.mode = 'readWriteDelete'"
+            >
+              Read/Write/Delete
             </button>
           </div>
         </div>

@@ -1,6 +1,6 @@
 use aws_sdk_s3::operation::get_object::GetObjectOutput;
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
+use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, Delete, ObjectIdentifier};
 use aws_sdk_s3::Client;
 use aws_smithy_types::date_time::Format;
 
@@ -384,6 +384,109 @@ pub async fn abort_multipart_upload(
         .upload_id(upload_id)
         .send()
         .await?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Deletes
+// ---------------------------------------------------------------------------
+
+/// Delete a batch of objects in one `DeleteObjects` request. `ids` must hold at
+/// most 1000 entries (the S3 limit); callers chunk larger sets. Returns the
+/// number of objects the provider reported deleted.
+///
+/// Per-object failures come back in the response body (not as an `SdkError`), so
+/// a non-empty `errors()` list is surfaced as [`AppError::Delete`].
+pub async fn delete_batch(
+    client: &Client,
+    bucket: &str,
+    ids: Vec<ObjectIdentifier>,
+) -> AppResult<u64> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let delete = Delete::builder()
+        .set_objects(Some(ids))
+        .build()
+        .map_err(|e| AppError::Delete(e.to_string()))?;
+    let out = client
+        .delete_objects()
+        .bucket(bucket)
+        .delete(delete)
+        .send()
+        .await?;
+
+    let errors = out.errors();
+    if !errors.is_empty() {
+        let summary = errors
+            .iter()
+            .take(3)
+            .map(|e| {
+                format!(
+                    "{}: {}",
+                    e.key().unwrap_or("?"),
+                    e.message().unwrap_or("unknown error")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(AppError::Delete(format!(
+            "{} object(s) could not be deleted ({summary})",
+            errors.len()
+        )));
+    }
+    Ok(out.deleted().len() as u64)
+}
+
+/// Recursively delete every object under `prefix` (no delimiter, so all
+/// subfolders are included), paging the listing and deleting each page as one
+/// batch. `on_batch` is called with the count deleted in each batch so the caller
+/// can surface running progress.
+///
+/// Owns the pagination loop in the ops layer (like [`crate::s3::metrics`]'s scan),
+/// keeping the command layer free of listing/continuation-token bookkeeping.
+pub async fn delete_prefix<F>(
+    client: &Client,
+    bucket: &str,
+    prefix: &str,
+    mut on_batch: F,
+) -> AppResult<()>
+where
+    F: FnMut(u64),
+{
+    let mut token: Option<String> = None;
+    loop {
+        let mut req = client
+            .list_objects_v2()
+            .bucket(bucket)
+            .prefix(prefix)
+            .max_keys(DEFAULT_MAX_KEYS);
+        if let Some(t) = &token {
+            req = req.continuation_token(t);
+        }
+        let out = req.send().await?;
+
+        // One page (≤ DEFAULT_MAX_KEYS keys) maps 1:1 to a single DeleteObjects.
+        let ids = out
+            .contents()
+            .iter()
+            .filter_map(|o| o.key())
+            .map(|k| {
+                ObjectIdentifier::builder()
+                    .key(k)
+                    .build()
+                    .map_err(|e| AppError::Delete(e.to_string()))
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        if !ids.is_empty() {
+            on_batch(delete_batch(client, bucket, ids).await?);
+        }
+
+        match out.next_continuation_token() {
+            Some(t) => token = Some(t.to_string()),
+            None => break,
+        }
+    }
     Ok(())
 }
 

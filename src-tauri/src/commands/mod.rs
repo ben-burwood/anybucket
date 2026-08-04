@@ -1,7 +1,7 @@
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::CompletedPart;
+use aws_sdk_s3::types::{CompletedPart, ObjectIdentifier};
 use aws_smithy_types::byte_stream::Length;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::State;
 use tokio::io::AsyncWriteExt;
@@ -10,8 +10,8 @@ use tokio::sync::Mutex;
 use crate::connections::{Connection, ConnectionInput};
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    Bucket, BucketMetrics, DownloadProgress, Listing, ListParams, ObjectMeta, ScanProgress,
-    UploadEntry, UploadProgress,
+    Bucket, BucketMetrics, DeleteProgress, DownloadProgress, Listing, ListParams, ObjectMeta,
+    ScanProgress, UploadEntry, UploadProgress,
 };
 use crate::s3::{self, metrics, ops};
 use crate::state::AppState;
@@ -26,6 +26,9 @@ const PROGRESS_STEP: u64 = 256 * 1024;
 /// multipart. Also the per-part size (≥ S3's 5 MiB minimum).
 const MULTIPART_THRESHOLD: u64 = 16 * 1024 * 1024;
 const PART_SIZE: u64 = 16 * 1024 * 1024;
+
+/// Maximum objects per `DeleteObjects` request (the S3 API limit).
+const DELETE_BATCH_SIZE: usize = 1000;
 
 type Shared<'a> = State<'a, Mutex<AppState>>;
 
@@ -476,6 +479,86 @@ async fn stream_parts(
     }
 
     Ok(parts)
+}
+
+// ---------------------------------------------------------------------------
+// Deletes
+// ---------------------------------------------------------------------------
+
+/// A single explicit object to delete: its key plus an optional version id
+/// (present only when deleting a specific version row).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteTarget {
+    pub key: String,
+    pub version_id: Option<String>,
+}
+
+/// Delete the given explicit `objects`, and recursively delete every object
+/// under each of `prefixes` (folder deletion). Streams a running deleted-count
+/// and a terminal `done`/`error` event; returns the total number deleted.
+#[tauri::command]
+pub async fn delete_objects(
+    bucket: String,
+    objects: Vec<DeleteTarget>,
+    prefixes: Vec<String>,
+    on_progress: Channel<DeleteProgress>,
+    state: Shared<'_>,
+) -> AppResult<u64> {
+    // Enforce the mode gate before doing anything else.
+    {
+        let st = state.lock().await;
+        st.require_deletable()?;
+    }
+    let client = client_for_active(&state).await?;
+
+    // Accumulate outside the worker so a mid-way failure can still report the
+    // partial count in the terminal event. Each batch is ≤ DELETE_BATCH_SIZE
+    // objects, so emitting once per batch is already a coarse enough throttle.
+    let mut deleted: u64 = 0;
+    let emit = |total| {
+        let _ = on_progress.send(DeleteProgress {
+            deleted: total,
+            done: false,
+            error: None,
+        });
+    };
+    let result: AppResult<()> = async {
+        // Explicit objects (files / specific version rows), chunked to the limit.
+        for chunk in objects.chunks(DELETE_BATCH_SIZE) {
+            let ids = chunk
+                .iter()
+                .map(|t| {
+                    ObjectIdentifier::builder()
+                        .key(t.key.clone())
+                        .set_version_id(t.version_id.clone())
+                        .build()
+                        .map_err(|e| AppError::Delete(e.to_string()))
+                })
+                .collect::<AppResult<Vec<_>>>()?;
+            deleted += ops::delete_batch(&client, &bucket, ids).await?;
+            emit(deleted);
+        }
+        // Folders: the ops layer owns the list-and-delete pagination per prefix.
+        for prefix in &prefixes {
+            ops::delete_prefix(&client, &bucket, prefix, |n| {
+                deleted += n;
+                emit(deleted);
+            })
+            .await?;
+        }
+        Ok(())
+    }
+    .await;
+
+    // Terminal event so the UI can settle its progress line either way.
+    let error = result.as_ref().err().map(|e| e.to_string());
+    let _ = on_progress.send(DeleteProgress {
+        deleted,
+        done: true,
+        error,
+    });
+    result.map(|()| deleted)
 }
 
 // ---------------------------------------------------------------------------

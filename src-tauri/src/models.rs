@@ -125,6 +125,17 @@ pub struct UploadProgress {
     pub error: Option<String>,
 }
 
+/// Progress event streamed to the frontend during a (possibly recursive) delete.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteProgress {
+    /// Running count of objects deleted so far.
+    pub deleted: u64,
+    pub done: bool,
+    /// Set on the terminal event if the delete failed.
+    pub error: Option<String>,
+}
+
 /// Aggregate size + object count for a whole bucket, computed by fully paginating its keys.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -18,8 +18,13 @@ const state = reactive<ConnectionsState>({
   error: null,
 });
 
-/** Whether the active connection permits writes (uploads, etc.). */
-const canWrite = computed(() => state.active?.mode === "readWrite");
+const canWrite = computed(
+  () =>
+    state.active?.mode === "readWrite" ||
+    state.active?.mode === "readWriteDelete",
+);
+
+const canDelete = computed(() => state.active?.mode === "readWriteDelete");
 
 async function refresh(): Promise<void> {
   state.loading = true;
@@ -67,6 +72,7 @@ export function useConnections() {
   return {
     state: readonly(state),
     canWrite,
+    canDelete,
     refresh,
     save,
     remove,
