@@ -1,9 +1,10 @@
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::CompletedPart;
+use aws_smithy_types::byte_stream::Length;
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::State;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
 use crate::connections::{Connection, ConnectionInput};
@@ -24,7 +25,7 @@ const PROGRESS_STEP: u64 = 256 * 1024;
 /// Files at or below this size go up in a single `PutObject`; larger files use
 /// multipart. Also the per-part size (≥ S3's 5 MiB minimum).
 const MULTIPART_THRESHOLD: u64 = 16 * 1024 * 1024;
-const PART_SIZE: usize = 16 * 1024 * 1024;
+const PART_SIZE: u64 = 16 * 1024 * 1024;
 
 type Shared<'a> = State<'a, Mutex<AppState>>;
 
@@ -279,30 +280,22 @@ pub async fn upload_object(
     };
 
     // Terminal event so the UI can settle its progress line either way.
-    match &result {
-        Ok(()) => {
-            let _ = on_progress.send(UploadProgress {
-                key: key.clone(),
-                uploaded: total,
-                total,
-                done: true,
-                error: None,
-            });
-        }
-        Err(e) => {
-            let _ = on_progress.send(UploadProgress {
-                key: key.clone(),
-                uploaded: 0,
-                total,
-                done: true,
-                error: Some(e.to_string()),
-            });
-        }
-    }
+    let (uploaded, error) = match &result {
+        Ok(()) => (total, None),
+        Err(e) => (0, Some(e.to_string())),
+    };
+    let _ = on_progress.send(UploadProgress {
+        key: key.clone(),
+        uploaded,
+        total,
+        done: true,
+        error,
+    });
     result
 }
 
-/// Read the whole file into memory and PUT it in one request.
+/// PUT the file in one request, streamed from disk by the SDK (no whole-file
+/// buffering in memory).
 async fn upload_single(
     client: &aws_sdk_s3::Client,
     bucket: &str,
@@ -310,8 +303,10 @@ async fn upload_single(
     src_path: &str,
     content_type: Option<&str>,
 ) -> AppResult<()> {
-    let bytes = tokio::fs::read(src_path).await?;
-    ops::put_object(client, bucket, key, ByteStream::from(bytes), content_type).await
+    let body = ByteStream::from_path(src_path)
+        .await
+        .map_err(|e| AppError::Upload(e.to_string()))?;
+    ops::put_object(client, bucket, key, body, content_type).await
 }
 
 /// Stream the file to S3 in `PART_SIZE` parts, emitting throttled progress and
@@ -327,7 +322,7 @@ async fn upload_multipart(
 ) -> AppResult<()> {
     let upload_id = ops::create_multipart_upload(client, bucket, key, content_type).await?;
 
-    let uploaded = match stream_parts(client, bucket, key, &upload_id, src_path, total, on_progress)
+    let parts = match stream_parts(client, bucket, key, &upload_id, src_path, total, on_progress)
         .await
     {
         Ok(parts) => parts,
@@ -337,14 +332,15 @@ async fn upload_multipart(
         }
     };
 
-    if let Err(e) = ops::complete_multipart_upload(client, bucket, key, &upload_id, uploaded).await {
+    if let Err(e) = ops::complete_multipart_upload(client, bucket, key, &upload_id, parts).await {
         let _ = ops::abort_multipart_upload(client, bucket, key, &upload_id).await;
         return Err(e);
     }
     Ok(())
 }
 
-/// Read the file part-by-part and upload each, returning the completed parts.
+/// Upload each part as a byte range streamed straight from disk by the SDK,
+/// returning the completed parts. Emits throttled progress between parts.
 async fn stream_parts(
     client: &aws_sdk_s3::Client,
     bucket: &str,
@@ -354,40 +350,26 @@ async fn stream_parts(
     total: u64,
     on_progress: &Channel<UploadProgress>,
 ) -> AppResult<Vec<CompletedPart>> {
-    let mut file = tokio::fs::File::open(src_path).await?;
-    let mut parts: Vec<CompletedPart> = Vec::new();
-    let mut part_number: i32 = 1;
+    let part_count = total.div_ceil(PART_SIZE);
+    let mut parts: Vec<CompletedPart> = Vec::with_capacity(part_count as usize);
     let mut uploaded: u64 = 0;
     let mut last_emitted: u64 = 0;
 
-    loop {
-        // Fill up to a full part; a short read only happens at EOF.
-        let mut chunk = vec![0u8; PART_SIZE];
-        let mut filled = 0usize;
-        while filled < PART_SIZE {
-            let n = file.read(&mut chunk[filled..]).await?;
-            if n == 0 {
-                break;
-            }
-            filled += n;
-        }
-        if filled == 0 {
-            break;
-        }
-        chunk.truncate(filled);
+    for i in 0..part_count {
+        let offset = i * PART_SIZE;
+        let len = PART_SIZE.min(total - offset); // the last part is short
+        let body = ByteStream::read_from()
+            .path(src_path)
+            .offset(offset)
+            .length(Length::Exact(len))
+            .build()
+            .await
+            .map_err(|e| AppError::Upload(e.to_string()))?;
 
-        let completed = ops::upload_part(
-            client,
-            bucket,
-            key,
-            upload_id,
-            part_number,
-            ByteStream::from(chunk),
-        )
-        .await?;
+        let completed =
+            ops::upload_part(client, bucket, key, upload_id, (i + 1) as i32, body).await?;
         parts.push(completed);
-        part_number += 1;
-        uploaded += filled as u64;
+        uploaded += len;
 
         if uploaded - last_emitted >= PROGRESS_STEP {
             last_emitted = uploaded;
@@ -398,10 +380,6 @@ async fn stream_parts(
                 done: false,
                 error: None,
             });
-        }
-
-        if filled < PART_SIZE {
-            break; // last (partial) part
         }
     }
 

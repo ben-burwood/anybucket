@@ -1,4 +1,4 @@
-import { reactive, readonly } from "vue";
+import { computed, reactive, readonly } from "vue";
 import * as api from "../api/connections";
 import { errorMessage, type Connection, type ConnectionInput } from "../types";
 import { useBuckets } from "./useBuckets";
@@ -17,6 +17,9 @@ const state = reactive<ConnectionsState>({
   loading: false,
   error: null,
 });
+
+/** Whether the active connection permits writes (uploads, etc.). */
+const canWrite = computed(() => state.active?.mode === "readWrite");
 
 async function refresh(): Promise<void> {
   state.loading = true;
@@ -63,6 +66,7 @@ async function setActive(id: string | null): Promise<void> {
 export function useConnections() {
   return {
     state: readonly(state),
+    canWrite,
     refresh,
     save,
     remove,

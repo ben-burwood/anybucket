@@ -10,12 +10,11 @@ import WindowResizers from "./components/WindowResizers.vue";
 import DownloadToasts from "./components/DownloadToasts.vue";
 import UploadToasts from "./components/UploadToasts.vue";
 
-import { computed } from "vue";
-
 const conns = useConnections();
 onMounted(() => conns.refresh());
 
-const readWrite = computed(() => conns.state.active?.mode === "readWrite");
+// The active connection's write mode, shown in the top-left chip at all times.
+const readWrite = conns.canWrite;
 
 // Double-clicking the empty titlebar area maximizes/restores, like a native one.
 function onTitlebarDblClick(e: MouseEvent) {

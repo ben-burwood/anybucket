@@ -27,7 +27,7 @@ import { useUploads } from "../store/useUploads";
 import { useBucketMetrics } from "../store/useBucketMetrics";
 import * as s3 from "../api/s3";
 import { type ObjectItem } from "../types";
-import { fileType, formatDate, formatSize } from "../utils/format";
+import { basename, fileType, formatDate, formatSize } from "../utils/format";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
 
@@ -42,7 +42,7 @@ const metricsCache = useBucketMetrics();
 const { isDark } = useTheme();
 
 /** Uploads are only offered when the active connection is in read-write mode. */
-const canWrite = computed(() => conns.state.active?.mode === "readWrite");
+const canWrite = conns.canWrite;
 
 const selected = ref<ObjectItem | null>(null);
 const uriCopied = ref(false);
@@ -80,12 +80,6 @@ async function copyCurrentUri() {
 const uploading = ref(false);
 // True while an OS drag is hovering the window (shows the drop overlay).
 const dragActive = ref(false);
-
-/** Last path segment of an OS path (handles both `/` and `\` separators). */
-function basename(path: string): string {
-  const parts = path.split(/[/\\]/);
-  return parts[parts.length - 1] || path;
-}
 
 /** Open the native file picker and upload the chosen files here. */
 async function pickAndUpload() {
