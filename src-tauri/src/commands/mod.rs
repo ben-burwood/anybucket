@@ -6,8 +6,10 @@ use tokio::sync::Mutex;
 
 use crate::connections::{Connection, ConnectionInput};
 use crate::error::{AppError, AppResult};
-use crate::models::{Bucket, DownloadProgress, Listing, ListParams, ObjectMeta};
-use crate::s3::{self, ops};
+use crate::models::{
+    Bucket, BucketMetrics, DownloadProgress, Listing, ListParams, ObjectMeta, ScanProgress,
+};
+use crate::s3::{self, metrics, ops};
 use crate::state::AppState;
 
 /// Default presigned-URL lifetime (15 minutes) when the UI does not specify one.
@@ -212,6 +214,43 @@ pub async fn download_object(
         error: None,
     });
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Metrics
+// ---------------------------------------------------------------------------
+
+/// Compute exact size + object count by fully paginating the bucket, streaming throttled progress.
+#[tauri::command]
+pub async fn scan_bucket_metrics(
+    bucket: String,
+    on_progress: Channel<ScanProgress>,
+    state: Shared<'_>,
+) -> AppResult<BucketMetrics> {
+    let client = client_for_active(&state).await?;
+
+    let progress = on_progress.clone();
+    let result = metrics::scan_metrics(&client, &bucket, move |object_count, total_bytes| {
+        let _ = progress.send(ScanProgress {
+            object_count,
+            total_bytes,
+            done: false,
+            error: None,
+        });
+    })
+    .await;
+
+    // Terminal event, so the UI can settle its progress line either way.
+    match &result {
+        Ok(m) => {
+            let _ = on_progress.send(metrics::scan_done(m.object_count, m.total_bytes, None));
+        }
+        Err(e) => {
+            let _ = on_progress.send(metrics::scan_done(0, 0, Some(e.to_string())));
+        }
+    }
+
+    result
 }
 
 /// Lock the state just long enough to obtain (and cache) the active client, then

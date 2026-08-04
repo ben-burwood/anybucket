@@ -1,10 +1,12 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   Bucket,
+  BucketMetrics,
   DownloadProgress,
   Listing,
   ObjectMeta,
   ObjectUris,
+  ScanProgress,
 } from "../types";
 
 export function listBuckets(): Promise<Bucket[]> {
@@ -79,4 +81,17 @@ export function downloadObject(
     versionId: versionId ?? null,
     onProgress: channel,
   });
+}
+
+/**
+ * Compute exact size + object count by fully scanning the bucket. `onProgress`
+ * receives throttled running totals and a terminal `done` event.
+ */
+export function scanBucketMetrics(
+  bucket: string,
+  onProgress: (p: ScanProgress) => void,
+): Promise<BucketMetrics> {
+  const channel = new Channel<ScanProgress>();
+  channel.onmessage = onProgress;
+  return invoke("scan_bucket_metrics", { bucket, onProgress: channel });
 }

@@ -98,3 +98,22 @@ pub struct DownloadProgress {
     /// Set on the terminal event if the download failed.
     pub error: Option<String>,
 }
+
+/// Aggregate size + object count for a whole bucket, computed by fully paginating its keys.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BucketMetrics {
+    pub total_bytes: i64,
+    pub object_count: i64,
+}
+
+/// Progress event streamed to the frontend during a full-bucket metrics scan.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanProgress {
+    pub object_count: i64,
+    pub total_bytes: i64,
+    pub done: bool,
+    /// Set on the terminal event if the scan failed.
+    pub error: Option<String>,
+}

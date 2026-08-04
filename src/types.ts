@@ -74,6 +74,18 @@ export interface DownloadProgress {
   error: string | null;
 }
 
+export interface BucketMetrics {
+  totalBytes: number;
+  objectCount: number;
+}
+
+export interface ScanProgress {
+  objectCount: number;
+  totalBytes: number;
+  done: boolean;
+  error: string | null;
+}
+
 /** Shape of the error object serialized by the Rust `AppError`. */
 export interface AppError {
   kind: string;
