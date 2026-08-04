@@ -8,6 +8,7 @@ import ThemeToggle from "./components/ThemeToggle.vue";
 import WindowControls from "./components/WindowControls.vue";
 import WindowResizers from "./components/WindowResizers.vue";
 import DownloadToasts from "./components/DownloadToasts.vue";
+import UploadToasts from "./components/UploadToasts.vue";
 
 import { computed } from "vue";
 
@@ -71,6 +72,7 @@ function onTitlebarDblClick(e: MouseEvent) {
     </main>
 
     <DownloadToasts />
+    <UploadToasts />
     <WindowResizers />
   </div>
 </template>

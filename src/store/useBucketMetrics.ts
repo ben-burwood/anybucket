@@ -34,6 +34,11 @@ function set(
   state.byKey[keyOf(connId, bucket)] = { metrics, scannedAt: Date.now() };
 }
 
+/** Drop the cached scan for a single bucket (e.g. after an upload changes it). */
+function invalidate(connId: string | undefined, bucket: string): void {
+  delete state.byKey[keyOf(connId, bucket)];
+}
+
 /** Drop every cached scan for a connection (e.g. credentials changed). */
 function invalidateConnection(connId: string | undefined): void {
   const prefix = `${connId ?? ""}::`;
@@ -48,6 +53,7 @@ export function useBucketMetrics() {
     state: readonly(state),
     get,
     set,
+    invalidate,
     invalidateConnection,
   };
 }

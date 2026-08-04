@@ -79,6 +79,14 @@ export interface DownloadProgress {
   error: string | null;
 }
 
+export interface UploadProgress {
+  key: string;
+  uploaded: number;
+  total: number;
+  done: boolean;
+  error: string | null;
+}
+
 export interface BucketMetrics {
   totalBytes: number;
   objectCount: number;

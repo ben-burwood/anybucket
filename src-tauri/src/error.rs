@@ -37,6 +37,9 @@ pub enum AppError {
     #[error("the active connection is read-only")]
     ReadOnly,
 
+    #[error("upload failed: {0}")]
+    Upload(String),
+
     #[error("{0}")]
     Other(String),
 }
@@ -53,6 +56,7 @@ impl AppError {
             AppError::Unsupported(_) => "unsupported",
             AppError::Download(_) => "download",
             AppError::ReadOnly => "read_only",
+            AppError::Upload(_) => "upload",
             AppError::Other(_) => "other",
         }
     }

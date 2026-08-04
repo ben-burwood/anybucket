@@ -7,6 +7,7 @@ import type {
   ObjectMeta,
   ObjectUris,
   ScanProgress,
+  UploadProgress,
 } from "../types";
 
 export function listBuckets(): Promise<Bucket[]> {
@@ -79,6 +80,32 @@ export function downloadObject(
     key,
     dest,
     versionId: versionId ?? null,
+    onProgress: channel,
+  });
+}
+
+/** Whether an object already exists at `key` (used to warn before overwriting). */
+export function objectExists(bucket: string, key: string): Promise<boolean> {
+  return invoke("object_exists", { bucket, key });
+}
+
+/**
+ * Upload the local file at `srcPath` to `bucket/key`, streaming throttled
+ * progress. Fails if the active connection is read-only, or picks multipart
+ * automatically for large files (both handled by the backend).
+ */
+export function uploadObject(
+  bucket: string,
+  key: string,
+  srcPath: string,
+  onProgress: (p: UploadProgress) => void,
+): Promise<void> {
+  const channel = new Channel<UploadProgress>();
+  channel.onmessage = onProgress;
+  return invoke("upload_object", {
+    bucket,
+    key,
+    srcPath,
     onProgress: channel,
   });
 }

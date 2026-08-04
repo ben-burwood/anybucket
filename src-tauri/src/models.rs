@@ -99,6 +99,19 @@ pub struct DownloadProgress {
     pub error: Option<String>,
 }
 
+/// Progress event streamed to the frontend during an upload.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadProgress {
+    pub key: String,
+    pub uploaded: u64,
+    /// Total bytes to upload (the local file size).
+    pub total: u64,
+    pub done: bool,
+    /// Set on the terminal event if the upload failed.
+    pub error: Option<String>,
+}
+
 /// Aggregate size + object count for a whole bucket, computed by fully paginating its keys.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
