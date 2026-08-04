@@ -11,7 +11,7 @@ use crate::connections::{Connection, ConnectionInput};
 use crate::error::{AppError, AppResult};
 use crate::models::{
     Bucket, BucketMetrics, DownloadProgress, Listing, ListParams, ObjectMeta, ScanProgress,
-    UploadProgress,
+    UploadEntry, UploadProgress,
 };
 use crate::s3::{self, metrics, ops};
 use crate::state::AppState;
@@ -237,6 +237,66 @@ pub async fn object_exists(bucket: String, key: String, state: Shared<'_>) -> Ap
     ops::object_exists(&client, &bucket, &key).await
 }
 
+/// Flatten dropped/picked paths into the concrete files to upload. A file yields
+/// one entry (`relKey` = its name); a directory is walked recursively, each file
+/// keeping its `folderName/sub/path` layout so structure is preserved in S3.
+///
+/// Pure local-disk enumeration (no S3), so it is not mode-gated — the uploads it
+/// feeds are gated individually by [`upload_object`].
+#[tauri::command]
+pub async fn expand_upload_paths(paths: Vec<String>) -> AppResult<Vec<UploadEntry>> {
+    let mut out = Vec::new();
+    for path in paths {
+        let p = std::path::PathBuf::from(&path);
+        let meta = tokio::fs::metadata(&p).await?;
+        if meta.is_dir() {
+            walk_dir(&p, &mut out).await?;
+        } else {
+            out.push(UploadEntry {
+                rel_key: p
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or(path.clone()),
+                src_path: path,
+                size: meta.len(),
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Iteratively walk `root`, appending every regular file as an `UploadEntry`
+/// keyed `root_name/<path relative to root>`. Symlinks are skipped (no cycles).
+async fn walk_dir(root: &std::path::Path, out: &mut Vec<UploadEntry>) -> AppResult<()> {
+    let root_name = root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let mut rd = tokio::fs::read_dir(&dir).await?;
+        while let Some(entry) = rd.next_entry().await? {
+            // `DirEntry::metadata` does not follow symlinks, so a symlinked dir is
+            // neither a dir nor a file here and is simply skipped (no cycles). It
+            // also yields the size, so it's the only stat needed per entry.
+            let meta = entry.metadata().await?;
+            let path = entry.path();
+            if meta.is_dir() {
+                stack.push(path);
+            } else if meta.is_file() {
+                let rel = path.strip_prefix(root).unwrap_or(&path);
+                let rel = rel.to_string_lossy().replace('\\', "/");
+                out.push(UploadEntry {
+                    rel_key: format!("{root_name}/{rel}"),
+                    src_path: path.to_string_lossy().into_owned(),
+                    size: meta.len(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Upload a local file at `src_path` to `bucket/key`, streaming throttled
 /// progress. Small files go up in one `PutObject`; large files use multipart.
 ///
@@ -258,9 +318,11 @@ pub async fn upload_object(
     let client = client_for_active(&state).await?;
 
     let meta = tokio::fs::metadata(&src_path).await?;
-    // Files-only (v1): a folder drop should be reported, not silently skipped.
+    // Defense-in-depth: callers expand directories via `expand_upload_paths`, so
+    // this command should only ever receive files. Reject a stray directory
+    // rather than misbehaving.
     if meta.is_dir() {
-        let msg = "folders are not supported".to_string();
+        let msg = format!("not a file: {src_path}");
         let _ = on_progress.send(UploadProgress {
             key: key.clone(),
             uploaded: 0,

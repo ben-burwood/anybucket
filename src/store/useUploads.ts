@@ -26,12 +26,16 @@ let counter = 0;
  * Upload one local file to `bucket/key`, tracking progress as a dismissable
  * toast. Resolves once the upload settles (success or failure) so callers can
  * refresh the listing afterwards. Never rejects — errors surface on the task.
+ *
+ * `total` may be supplied up front (the known file size) so aggregate progress
+ * is accurate before the first progress event arrives.
  */
 async function start(
   bucket: string,
   key: string,
   srcPath: string,
   name: string,
+  total = 0,
 ): Promise<void> {
   const task = reactive<UploadTask>({
     id: `ul-${++counter}`,
@@ -39,7 +43,7 @@ async function start(
     key,
     name,
     uploaded: 0,
-    total: 0,
+    total,
     done: false,
     error: null,
   });

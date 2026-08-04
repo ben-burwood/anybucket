@@ -87,6 +87,14 @@ export interface UploadProgress {
   error: string | null;
 }
 
+/** One local file to upload, from expanding a dropped/picked path (see s3.expandUploadPaths). */
+export interface UploadEntry {
+  srcPath: string;
+  /** Key suffix relative to the target folder, `/`-separated (preserves folder structure). */
+  relKey: string;
+  size: number;
+}
+
 export interface BucketMetrics {
   totalBytes: number;
   objectCount: number;

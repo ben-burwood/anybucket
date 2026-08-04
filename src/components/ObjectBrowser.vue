@@ -80,6 +80,8 @@ async function copyCurrentUri() {
 const uploading = ref(false);
 // True while an OS drag is hovering the window (shows the drop overlay).
 const dragActive = ref(false);
+// Whether the Upload button's files/folder menu is open.
+const uploadMenuOpen = ref(false);
 
 // Max concurrent uploads — a dropped folder can be hundreds of files, so we
 // cap in-flight PUTs rather than firing them all at once.
@@ -88,8 +90,13 @@ const UPLOAD_CONCURRENCY = 5;
 // each) and show a single generic overwrite warning instead.
 const OVERWRITE_CHECK_LIMIT = 100;
 
-/** Open the native picker (files, or whole folders) and upload the selection. */
+/**
+ * Open the native picker and upload the selection. A single native dialog can't
+ * offer both files and folders (especially on Windows), so `directory` selects
+ * the mode; the Upload button's little menu picks between them.
+ */
 async function pickAndUpload(directory: boolean) {
+  uploadMenuOpen.value = false;
   const selection = await open({ multiple: true, directory });
   if (!selection) return;
   await uploadFiles(Array.isArray(selection) ? selection : [selection]);
@@ -388,7 +395,7 @@ watch(
           class="rounded-xl border-2 border-dashed border-emerald-500 bg-white/90 px-6 py-4 text-center shadow-lg dark:bg-night-900/90"
         >
           <p class="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-            ⬆ Drop files to upload
+            ⬆ Drop files or folders to upload
           </p>
           <p class="mt-0.5 truncate text-xs text-slate-500" :title="`s3://${bucket}/${prefix}`">
             to s3://{{ bucket }}/{{ prefix }}
@@ -445,24 +452,37 @@ watch(
         </div>
 
         <div class="ml-auto flex shrink-0 items-center gap-2">
-          <template v-if="canWrite">
+          <div v-if="canWrite" class="relative">
             <button
               class="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
-              title="Upload files to this location"
+              title="Upload files or a folder to this location"
               :disabled="uploading"
-              @click="pickAndUpload(false)"
+              @click="uploadMenuOpen = !uploadMenuOpen"
             >
-              {{ uploading ? "Uploading…" : "⬆ Files" }}
+              {{ uploading ? "Uploading…" : "⬆ Upload" }}
             </button>
-            <button
-              class="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
-              title="Upload a folder (contents uploaded, structure preserved)"
-              :disabled="uploading"
-              @click="pickAndUpload(true)"
-            >
-              ⬆ Folder
-            </button>
-          </template>
+            <template v-if="uploadMenuOpen">
+              <!-- Click-catcher: closes the menu on any outside click. -->
+              <div class="fixed inset-0 z-40" @click="uploadMenuOpen = false" />
+              <div
+                class="absolute right-0 top-full z-50 mt-1 w-32 overflow-hidden rounded-md border border-slate-200 bg-white py-1 text-xs shadow-lg dark:border-night-700 dark:bg-night-900"
+              >
+                <button
+                  class="block w-full px-3 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-night-800"
+                  @click="pickAndUpload(false)"
+                >
+                  📄 Files…
+                </button>
+                <button
+                  class="block w-full px-3 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-night-800"
+                  title="Contents uploaded, folder structure preserved"
+                  @click="pickAndUpload(true)"
+                >
+                  📁 Folder…
+                </button>
+              </div>
+            </template>
+          </div>
           <button
             class="rounded border px-2 py-0.5 text-xs"
             :class="

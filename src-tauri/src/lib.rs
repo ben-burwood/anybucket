@@ -39,6 +39,7 @@ pub fn run() {
             commands::object_uris,
             commands::download_object,
             commands::object_exists,
+            commands::expand_upload_paths,
             commands::upload_object,
             commands::scan_bucket_metrics,
         ])

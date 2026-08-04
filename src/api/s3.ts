@@ -7,6 +7,7 @@ import type {
   ObjectMeta,
   ObjectUris,
   ScanProgress,
+  UploadEntry,
   UploadProgress,
 } from "../types";
 
@@ -87,6 +88,14 @@ export function downloadObject(
 /** Whether an object already exists at `key` (used to warn before overwriting). */
 export function objectExists(bucket: string, key: string): Promise<boolean> {
   return invoke("object_exists", { bucket, key });
+}
+
+/**
+ * Flatten dropped/picked paths into the files to upload. Files map to their own
+ * name; folders are walked recursively, preserving their structure in `relKey`.
+ */
+export function expandUploadPaths(paths: string[]): Promise<UploadEntry[]> {
+  return invoke("expand_upload_paths", { paths });
 }
 
 /**

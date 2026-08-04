@@ -25,9 +25,3 @@ export function fileType(name: string): string {
   if (dot < 0 || dot === name.length - 1) return "File";
   return name.slice(dot + 1).toUpperCase();
 }
-
-/** Last path segment of an OS path (handles both `/` and `\` separators). */
-export function basename(path: string): string {
-  const parts = path.split(/[/\\]/);
-  return parts[parts.length - 1] || path;
-}
