@@ -40,6 +40,12 @@ pub enum AppError {
     #[error("upload failed: {0}")]
     Upload(String),
 
+    #[error("the active connection does not permit deletes")]
+    DeleteNotAllowed,
+
+    #[error("delete failed: {0}")]
+    Delete(String),
+
     #[error("{0}")]
     Other(String),
 }
@@ -57,6 +63,8 @@ impl AppError {
             AppError::Download(_) => "download",
             AppError::ReadOnly => "read_only",
             AppError::Upload(_) => "upload",
+            AppError::DeleteNotAllowed => "delete_not_allowed",
+            AppError::Delete(_) => "delete",
             AppError::Other(_) => "other",
         }
     }

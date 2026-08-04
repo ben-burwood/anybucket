@@ -1,7 +1,7 @@
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::CompletedPart;
+use aws_sdk_s3::types::{CompletedPart, ObjectIdentifier};
 use aws_smithy_types::byte_stream::Length;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::State;
 use tokio::io::AsyncWriteExt;
@@ -10,8 +10,8 @@ use tokio::sync::Mutex;
 use crate::connections::{Connection, ConnectionInput};
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    Bucket, BucketMetrics, DownloadProgress, Listing, ListParams, ObjectMeta, ScanProgress,
-    UploadEntry, UploadProgress,
+    Bucket, BucketMetrics, DeleteProgress, DownloadProgress, Listing, ListParams, ObjectMeta,
+    ScanProgress, UploadEntry, UploadProgress,
 };
 use crate::s3::{self, metrics, ops};
 use crate::state::AppState;
@@ -26,6 +26,9 @@ const PROGRESS_STEP: u64 = 256 * 1024;
 /// multipart. Also the per-part size (≥ S3's 5 MiB minimum).
 const MULTIPART_THRESHOLD: u64 = 16 * 1024 * 1024;
 const PART_SIZE: u64 = 16 * 1024 * 1024;
+
+/// Maximum objects per `DeleteObjects` request (the S3 API limit).
+const DELETE_BATCH_SIZE: usize = 1000;
 
 type Shared<'a> = State<'a, Mutex<AppState>>;
 
@@ -476,6 +479,118 @@ async fn stream_parts(
     }
 
     Ok(parts)
+}
+
+// ---------------------------------------------------------------------------
+// Deletes
+// ---------------------------------------------------------------------------
+
+/// A single explicit object to delete: its key plus an optional version id
+/// (present only when deleting a specific version row).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteTarget {
+    pub key: String,
+    pub version_id: Option<String>,
+}
+
+/// Delete the given explicit `objects`, and recursively delete every object
+/// under each of `prefixes` (folder deletion). Streams a running deleted-count
+/// and a terminal `done`/`error` event; returns the total number deleted.
+#[tauri::command]
+pub async fn delete_objects(
+    bucket: String,
+    objects: Vec<DeleteTarget>,
+    prefixes: Vec<String>,
+    on_progress: Channel<DeleteProgress>,
+    state: Shared<'_>,
+) -> AppResult<u64> {
+    // Enforce the mode gate before doing anything else.
+    {
+        let st = state.lock().await;
+        st.require_deletable()?;
+    }
+    let client = client_for_active(&state).await?;
+
+    // Track the running count outside the worker so a mid-way failure can still
+    // report how many objects were actually removed.
+    let mut deleted: u64 = 0;
+    let result = delete_all(&client, &bucket, objects, prefixes, &on_progress, &mut deleted).await;
+
+    // Terminal event so the UI can settle its progress line either way.
+    let error = result.as_ref().err().map(|e| e.to_string());
+    let _ = on_progress.send(DeleteProgress {
+        deleted,
+        done: true,
+        error,
+    });
+    result.map(|()| deleted)
+}
+
+/// Do the actual deletes, accumulating into `deleted` and emitting a progress
+/// event after each batch. Kept separate so the caller can send a terminal event
+/// with the partial count even on failure.
+async fn delete_all(
+    client: &aws_sdk_s3::Client,
+    bucket: &str,
+    objects: Vec<DeleteTarget>,
+    prefixes: Vec<String>,
+    on_progress: &Channel<DeleteProgress>,
+    deleted: &mut u64,
+) -> AppResult<()> {
+    // Explicit objects (files / specific version rows), chunked to the API limit.
+    for chunk in objects.chunks(DELETE_BATCH_SIZE) {
+        let ids = chunk
+            .iter()
+            .map(|t| {
+                ObjectIdentifier::builder()
+                    .key(t.key.clone())
+                    .set_version_id(t.version_id.clone())
+                    .build()
+                    .map_err(|e| AppError::Delete(e.to_string()))
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        *deleted += ops::delete_batch(client, bucket, ids).await?;
+        emit_deleted(on_progress, *deleted);
+    }
+
+    // Recursive folder deletes: page each prefix, deleting one page per batch.
+    for prefix in &prefixes {
+        let mut token: Option<String> = None;
+        loop {
+            let (keys, next) =
+                ops::list_prefix_page(client, bucket, prefix, token.as_deref()).await?;
+            if !keys.is_empty() {
+                let ids = keys
+                    .into_iter()
+                    .map(|k| {
+                        ObjectIdentifier::builder()
+                            .key(k)
+                            .build()
+                            .map_err(|e| AppError::Delete(e.to_string()))
+                    })
+                    .collect::<AppResult<Vec<_>>>()?;
+                *deleted += ops::delete_batch(client, bucket, ids).await?;
+                emit_deleted(on_progress, *deleted);
+            }
+            match next {
+                Some(t) => token = Some(t),
+                None => break,
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Emit a non-terminal progress event with the running deleted count. Each batch
+/// is up to 1000 objects, so per-batch emission is already coarse enough not to
+/// flood the channel.
+fn emit_deleted(on_progress: &Channel<DeleteProgress>, deleted: u64) {
+    let _ = on_progress.send(DeleteProgress {
+        deleted,
+        done: false,
+        error: None,
+    });
 }
 
 // ---------------------------------------------------------------------------

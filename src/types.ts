@@ -1,7 +1,10 @@
 // TypeScript mirrors of the Rust DTOs (camelCase via serde rename_all).
 
-/** Whether a connection may write (uploads, etc.) or is browse-only. */
-export type AccessMode = "readOnly" | "readWrite";
+/**
+ * What a connection may do, in increasing order of capability. `readWriteDelete`
+ * is a superset of `readWrite` (it may also write); deletes are gated to it alone.
+ */
+export type AccessMode = "readOnly" | "readWrite" | "readWriteDelete";
 
 export interface Connection {
   id: string;
@@ -103,6 +106,13 @@ export interface BucketMetrics {
 export interface ScanProgress {
   objectCount: number;
   totalBytes: number;
+  done: boolean;
+  error: string | null;
+}
+
+/** Progress event streamed during a (possibly recursive) delete. */
+export interface DeleteProgress {
+  deleted: number;
   done: boolean;
   error: string | null;
 }

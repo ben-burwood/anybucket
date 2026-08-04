@@ -1,6 +1,6 @@
 use aws_sdk_s3::operation::get_object::GetObjectOutput;
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
+use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, Delete, ObjectIdentifier};
 use aws_sdk_s3::Client;
 use aws_smithy_types::date_time::Format;
 
@@ -385,6 +385,84 @@ pub async fn abort_multipart_upload(
         .send()
         .await?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Deletes
+// ---------------------------------------------------------------------------
+
+/// Delete a batch of objects in one `DeleteObjects` request. `ids` must hold at
+/// most 1000 entries (the S3 limit); callers chunk larger sets. Returns the
+/// number of objects the provider reported deleted.
+///
+/// Per-object failures come back in the response body (not as an `SdkError`), so
+/// a non-empty `errors()` list is surfaced as [`AppError::Delete`].
+pub async fn delete_batch(
+    client: &Client,
+    bucket: &str,
+    ids: Vec<ObjectIdentifier>,
+) -> AppResult<u64> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let delete = Delete::builder()
+        .set_objects(Some(ids))
+        .build()
+        .map_err(|e| AppError::Delete(e.to_string()))?;
+    let out = client
+        .delete_objects()
+        .bucket(bucket)
+        .delete(delete)
+        .send()
+        .await?;
+
+    let errors = out.errors();
+    if !errors.is_empty() {
+        let summary = errors
+            .iter()
+            .take(3)
+            .map(|e| {
+                format!(
+                    "{}: {}",
+                    e.key().unwrap_or("?"),
+                    e.message().unwrap_or("unknown error")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(AppError::Delete(format!(
+            "{} object(s) could not be deleted ({summary})",
+            errors.len()
+        )));
+    }
+    Ok(out.deleted().len() as u64)
+}
+
+/// List one page of keys under `prefix`, recursing into subfolders (no
+/// delimiter). Returns this page's keys plus the continuation token for the next
+/// page, if the listing was truncated. Page size is capped at the S3 maximum so
+/// one page maps 1:1 to a single [`delete_batch`] call.
+pub async fn list_prefix_page(
+    client: &Client,
+    bucket: &str,
+    prefix: &str,
+    token: Option<&str>,
+) -> AppResult<(Vec<String>, Option<String>)> {
+    let mut req = client
+        .list_objects_v2()
+        .bucket(bucket)
+        .prefix(prefix)
+        .max_keys(DEFAULT_MAX_KEYS);
+    if let Some(t) = token {
+        req = req.continuation_token(t);
+    }
+    let out = req.send().await?;
+    let keys = out
+        .contents()
+        .iter()
+        .filter_map(|o| o.key().map(str::to_string))
+        .collect();
+    Ok((keys, out.next_continuation_token().map(str::to_string)))
 }
 
 /// Coarse content-type guess from a key's extension; `None` lets S3 default to

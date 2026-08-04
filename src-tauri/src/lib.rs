@@ -42,6 +42,7 @@ pub fn run() {
             commands::expand_upload_paths,
             commands::upload_object,
             commands::create_folder,
+            commands::delete_objects,
             commands::scan_bucket_metrics,
         ])
         .run(tauri::generate_context!())

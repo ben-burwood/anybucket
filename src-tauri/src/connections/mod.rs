@@ -8,16 +8,19 @@ use crate::error::{AppError, AppResult};
 /// Each secret is keyed by the connection's `id`.
 const KEYCHAIN_SERVICE: &str = "co.anybucket";
 
-/// Whether a connection may perform writes (uploads, etc.) or is browse-only.
+/// What a connection is permitted to do, in increasing order of capability.
 ///
 /// Defaults to [`AccessMode::ReadOnly`] so connections saved before this field
 /// existed — and any new connection until explicitly armed — cannot write.
+/// `ReadWriteDelete` is a superset of `ReadWrite`: it permits everything writes
+/// do, plus deletes (which are gated separately by [`crate::state`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum AccessMode {
     #[default]
     ReadOnly,
     ReadWrite,
+    ReadWriteDelete,
 }
 
 /// A saved connection to an S3-compatible endpoint.

@@ -2,6 +2,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   Bucket,
   BucketMetrics,
+  DeleteProgress,
   DownloadProgress,
   Listing,
   ObjectMeta,
@@ -130,6 +131,28 @@ export function createFolder(
   name: string,
 ): Promise<string> {
   return invoke("create_folder", { bucket, prefix, name });
+}
+
+/**
+ * Delete the given explicit `objects` (files / specific version rows) and
+ * recursively delete every object under each folder `prefix`. Fails unless the
+ * active connection is in read-write-delete mode. `onProgress` receives a running
+ * deleted-count and a terminal `done` event; resolves with the total deleted.
+ */
+export function deleteObjects(
+  bucket: string,
+  objects: { key: string; versionId?: string | null }[],
+  prefixes: string[],
+  onProgress: (p: DeleteProgress) => void,
+): Promise<number> {
+  const channel = new Channel<DeleteProgress>();
+  channel.onmessage = onProgress;
+  return invoke("delete_objects", {
+    bucket,
+    objects,
+    prefixes,
+    onProgress: channel,
+  });
 }
 
 /**

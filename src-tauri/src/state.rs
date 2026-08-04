@@ -32,8 +32,15 @@ impl AppState {
 
     pub fn require_writable(&self) -> AppResult<()> {
         match self.active_connection()?.mode {
-            AccessMode::ReadWrite => Ok(()),
+            AccessMode::ReadWrite | AccessMode::ReadWriteDelete => Ok(()),
             AccessMode::ReadOnly => Err(AppError::ReadOnly),
+        }
+    }
+
+    pub fn require_deletable(&self) -> AppResult<()> {
+        match self.active_connection()?.mode {
+            AccessMode::ReadWriteDelete => Ok(()),
+            AccessMode::ReadOnly | AccessMode::ReadWrite => Err(AppError::DeleteNotAllowed),
         }
     }
 

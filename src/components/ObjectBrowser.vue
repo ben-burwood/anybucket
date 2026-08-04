@@ -14,6 +14,8 @@ import {
   type GridApi,
   type GridReadyEvent,
   type RowClickedEvent,
+  type RowSelectionOptions,
+  type SelectionChangedEvent,
 } from "ag-grid-community";
 import {
   breadcrumbs,
@@ -30,6 +32,7 @@ import { errorMessage, type ObjectItem } from "../types";
 import { fileType, formatDate, formatSize } from "../utils/format";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
+import ConfirmModal from "./ConfirmModal.vue";
 
 const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
@@ -41,8 +44,8 @@ const metricsCache = useBucketMetrics();
 
 const { isDark } = useTheme();
 
-/** Uploads are only offered when the active connection is in read-write mode. */
-const canWrite = conns.canWrite;
+// Write/delete affordances gate on the active connection's mode via
+// `conns.canWrite` (uploads, new folders) and `conns.canDelete`.
 
 const selected = ref<ObjectItem | null>(null);
 const uriCopied = ref(false);
@@ -121,6 +124,64 @@ async function createFolder() {
   }
 }
 
+// --- Delete --------------------------------------------------------------
+
+// Rows currently ticked via the selection checkboxes (files and/or folders).
+const selectedRows = ref<Row[]>([]);
+function onSelectionChanged(e: SelectionChangedEvent<Row>) {
+  selectedRows.value = e.api.getSelectedRows();
+}
+
+const deleteModalOpen = ref(false);
+const deleting = ref(false);
+const deleteError = ref<string | null>(null);
+const deleteProgress = ref<string | null>(null);
+
+/** Modal lines for the selection; folders are flagged as recursive. */
+const deleteItems = computed(() =>
+  selectedRows.value.map((r) =>
+    r.kind === "folder" ? `${r.name}/  (folder — deletes all contents)` : r.name,
+  ),
+);
+
+function openDeleteModal() {
+  if (!conns.canDelete.value || !selectedRows.value.length) return;
+  deleteError.value = null;
+  deleteProgress.value = null;
+  deleteModalOpen.value = true;
+}
+
+/** Delete the selected files/folders (already confirmed), then refresh + invalidate. */
+async function confirmDelete() {
+  const objects = selectedRows.value
+    .filter((r) => r.object)
+    .map((r) => ({ key: r.object!.key, versionId: r.object!.versionId }));
+  const prefixes = selectedRows.value
+    .filter((r) => r.kind === "folder" && r.prefix != null)
+    .map((r) => r.prefix!);
+  if (!objects.length && !prefixes.length) return;
+
+  deleting.value = true;
+  deleteError.value = null;
+  deleteProgress.value = "Deleting…";
+  try {
+    await s3.deleteObjects(props.bucket, objects, prefixes, (p) => {
+      deleteProgress.value = p.done
+        ? "Finishing…"
+        : `Deleted ${p.deleted.toLocaleString()}…`;
+    });
+    deleteModalOpen.value = false;
+    gridApi?.deselectAll();
+    selectedRows.value = [];
+    await refresh();
+    metricsCache.invalidate(conns.state.active?.id, props.bucket);
+  } catch (e) {
+    deleteError.value = errorMessage(e);
+  } finally {
+    deleting.value = false;
+  }
+}
+
 // --- Uploads -------------------------------------------------------------
 
 const uploading = ref(false);
@@ -154,7 +215,7 @@ async function pickAndUpload(directory: boolean) {
  * refresh the listing + metrics.
  */
 async function uploadFiles(paths: string[]) {
-  if (!canWrite.value || paths.length === 0 || uploading.value) return;
+  if (!conns.canWrite.value || paths.length === 0 || uploading.value) return;
   uploading.value = true;
   try {
     const entries = await s3.expandUploadPaths(paths);
@@ -228,12 +289,12 @@ onMounted(async () => {
   unlistenDrag = await getCurrentWebview().onDragDropEvent((event) => {
     const p = event.payload;
     if (p.type === "enter" || p.type === "over") {
-      if (canWrite.value) dragActive.value = true;
+      if (conns.canWrite.value) dragActive.value = true;
     } else if (p.type === "leave") {
       dragActive.value = false;
     } else if (p.type === "drop") {
       dragActive.value = false;
-      if (canWrite.value && p.paths.length) uploadFiles(p.paths);
+      if (conns.canWrite.value && p.paths.length) uploadFiles(p.paths);
     }
   });
 });
@@ -342,6 +403,20 @@ const defaultColDef = computed<ColDef>(() => ({
   sortable: sortingEnabled.value,
   resizable: true,
 }));
+
+// Selection mode: checkbox multi-select on a delete-capable connection (drives
+// the bulk-delete flow), otherwise plain single-row. Either way, row-body clicks
+// still navigate / open detail via `onRowClicked` (selection is checkbox-only).
+const rowSelection = computed<RowSelectionOptions<Row>>(() =>
+  conns.canDelete.value
+    ? {
+        mode: "multiRow",
+        checkboxes: true,
+        headerCheckbox: true,
+        enableClickSelection: false,
+      }
+    : { mode: "singleRow", checkboxes: false },
+);
 
 let gridApi: GridApi<Row> | undefined;
 function onGridReady(e: GridReadyEvent<Row>) {
@@ -498,7 +573,15 @@ watch(
         </div>
 
         <div class="ml-auto flex shrink-0 items-center gap-2">
-          <div v-if="canWrite" class="relative">
+          <button
+            v-if="conns.canDelete.value && selectedRows.length"
+            class="rounded border border-rose-300 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+            title="Delete the selected objects"
+            @click="openDeleteModal"
+          >
+            🗑 Delete ({{ selectedRows.length }})
+          </button>
+          <div v-if="conns.canWrite.value" class="relative">
             <button
               class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
               title="Create a new folder in this location"
@@ -544,9 +627,9 @@ watch(
               </div>
             </template>
           </div>
-          <div v-if="canWrite" class="relative">
+          <div v-if="conns.canWrite.value" class="relative">
             <button
-              class="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/70"
+              class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
               title="Upload files or a folder to this location"
               :disabled="uploading"
               @click="uploadMenuOpen = !uploadMenuOpen"
@@ -703,9 +786,10 @@ watch(
           :overlayNoRowsTemplate="noRowsTemplate"
           :getRowId="getRowId"
           :getRowClass="getRowClass"
-          rowSelection="single"
+          :rowSelection="rowSelection"
           @grid-ready="onGridReady"
           @row-clicked="onRowClicked"
+          @selection-changed="onSelectionChanged"
         />
       </div>
 
@@ -730,6 +814,19 @@ watch(
       :bucket="bucket"
       :object="selected"
       @close="selected = null"
+    />
+
+    <ConfirmModal
+      :open="deleteModalOpen"
+      :title="`Delete ${selectedRows.length} item(s)? This cannot be undone.`"
+      :items="deleteItems"
+      :busy="deleting"
+      :progress-text="deleteProgress"
+      :error="deleteError"
+      confirm-label="Delete"
+      danger
+      @confirm="confirmDelete"
+      @cancel="deleteModalOpen = false"
     />
   </div>
 </template>
