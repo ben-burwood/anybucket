@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import * as api from "../api/connections";
 import { useConnections } from "../store/useConnections";
 import { errorMessage, type Connection, type ConnectionInput } from "../types";
+import AccessModeChip from "./AccessModeChip.vue";
 
 const conns = useConnections();
 
@@ -174,17 +175,7 @@ onMounted(() => conns.refresh());
                 >
                   Active
                 </span>
-                <span
-                  class="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
-                  :class="
-                    c.mode === 'readWrite'
-                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-                      : 'bg-slate-100 text-slate-500 dark:bg-night-800 dark:text-slate-400'
-                  "
-                  :title="c.mode === 'readWrite' ? 'Read-write' : 'Read-only'"
-                >
-                  {{ c.mode === "readWrite" ? "RW" : "RO" }}
-                </span>
+                <AccessModeChip :mode="c.mode" />
               </div>
               <p class="truncate text-xs text-slate-400">
                 {{ c.endpointUrl ?? "AWS S3" }} · {{ c.region }} ·

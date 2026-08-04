@@ -13,9 +13,6 @@ import UploadToasts from "./components/UploadToasts.vue";
 const conns = useConnections();
 onMounted(() => conns.refresh());
 
-// The active connection's write mode, shown in the top-left chip at all times.
-const readWrite = conns.canWrite;
-
 // Double-clicking the empty titlebar area maximizes/restores, like a native one.
 function onTitlebarDblClick(e: MouseEvent) {
   if ((e.target as HTMLElement).hasAttribute("data-tauri-drag-region")) {
@@ -41,21 +38,6 @@ function onTitlebarDblClick(e: MouseEvent) {
           class="inline-block h-5 w-5 rounded bg-gradient-to-b from-emerald-500 to-green-600"
         />
         AnyBucket
-        <span
-          class="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
-          :class="
-            readWrite
-              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-              : 'bg-slate-100 text-slate-500 dark:bg-night-800 dark:text-slate-400'
-          "
-          :title="
-            readWrite
-              ? 'Writes enabled for the active connection'
-              : 'The active connection is read-only'
-          "
-        >
-          {{ readWrite ? "read-write" : "read-only" }}
-        </span>
       </RouterLink>
 
       <div class="flex h-full items-center gap-2" data-tauri-drag-region>
