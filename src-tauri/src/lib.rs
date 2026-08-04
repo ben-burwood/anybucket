@@ -38,6 +38,7 @@ pub fn run() {
             commands::presign_get,
             commands::object_uris,
             commands::download_object,
+            commands::scan_bucket_metrics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

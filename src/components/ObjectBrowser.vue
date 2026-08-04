@@ -20,6 +20,7 @@ import { useTheme } from "../store/useTheme";
 import type { ObjectItem } from "../types";
 import { fileType, formatDate, formatSize } from "../utils/format";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
+import BucketMetricsPanel from "./BucketMetricsPanel.vue";
 
 const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
@@ -29,6 +30,7 @@ const { isDark } = useTheme();
 
 const selected = ref<ObjectItem | null>(null);
 const uriCopied = ref(false);
+const showMetrics = ref(false);
 
 // Prefix-filter box, debounced so we re-query S3 only when typing pauses.
 const query = ref("");
@@ -286,6 +288,18 @@ watch(
 
         <div class="ml-auto flex shrink-0 items-center gap-2">
           <button
+            class="rounded border px-2 py-0.5 text-xs"
+            :class="
+              showMetrics
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                : 'border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800'
+            "
+            title="Show bucket size and object count"
+            @click="showMetrics = !showMetrics"
+          >
+            📊 Metrics
+          </button>
+          <button
             class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
             :title="`Copy s3://${bucket}/${prefix}`"
             @click="copyCurrentUri"
@@ -301,6 +315,9 @@ watch(
           </button>
         </div>
       </div>
+
+      <!-- Bucket-wide metrics (size, object count) -->
+      <BucketMetricsPanel v-if="showMetrics" :bucket="bucket" />
 
       <!-- Prefix filter (above the grid, aligned over the Name column) -->
       <div
