@@ -8,6 +8,8 @@ import {
   colorSchemeLight,
   themeQuartz,
   type ColDef,
+  type GridApi,
+  type GridReadyEvent,
   type RowClickedEvent,
 } from "ag-grid-community";
 import {
@@ -152,10 +154,24 @@ const columnDefs = computed<ColDef<Row>[]>(() => {
   return cols;
 });
 
-const defaultColDef: ColDef = {
-  sortable: true,
+// Sorting is client-side, so it only reorders the rows currently loaded. On a
+// truncated listing (more pages behind the continuation token) that would sort a
+// partial set and mislead — so only allow sorting once the whole listing is in.
+const sortingEnabled = computed(() => !state.listing?.nextToken);
+
+const defaultColDef = computed<ColDef>(() => ({
+  sortable: sortingEnabled.value,
   resizable: true,
-};
+}));
+
+let gridApi: GridApi<Row> | undefined;
+function onGridReady(e: GridReadyEvent<Row>) {
+  gridApi = e.api;
+}
+
+watch(sortingEnabled, (enabled) => {
+  if (!enabled) gridApi?.applyColumnState({ defaultState: { sort: null } });
+});
 
 // Distinct id per (key, version) so same-key version rows don't collide.
 function getRowId(p: { data: Row }): string {
@@ -416,6 +432,7 @@ watch(
           :getRowId="getRowId"
           :getRowClass="getRowClass"
           rowSelection="single"
+          @grid-ready="onGridReady"
           @row-clicked="onRowClicked"
         />
       </div>
