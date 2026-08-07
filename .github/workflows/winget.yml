@@ -1,0 +1,24 @@
+name: Publish to WinGet
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  winget:
+    runs-on: windows-latest
+    if: github.event.release.prerelease == false
+    steps:
+      - name: Publish AnyBucket update to WinGet
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.release.tag_name }}"        # e.g. app-v0.3.1
+          $version = $tag -replace '^app-v', ''                # e.g. 0.3.1
+          $installerUrl = "https://github.com/ben-burwood/anybucket/releases/download/$tag/AnyBucket_${version}_x64-setup.exe"
+
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          .\wingetcreate.exe update BenBurwood.AnyBucket `
+            --version $version `
+            --urls "$installerUrl" `
+            --submit `
+            --token "${{ secrets.WINGET_TOKEN }}"
