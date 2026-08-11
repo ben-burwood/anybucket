@@ -11,6 +11,9 @@ use crate::models::{Bucket, Folder, Listing, ListParams, ObjectItem, ObjectMeta}
 /// Default page size for object listings.
 const DEFAULT_MAX_KEYS: i32 = 1000;
 
+/// Maximum objects per `DeleteObjects` request (the S3 API limit).
+const DELETE_BATCH_SIZE: usize = 1000;
+
 /// List all buckets visible to the active credentials.
 pub async fn list_buckets(client: &Client) -> AppResult<Vec<Bucket>> {
     let out = client.list_buckets().send().await?;
@@ -487,6 +490,35 @@ where
             Some(t) => token = Some(t.to_string()),
             None => break,
         }
+    }
+    Ok(())
+}
+
+/// Delete explicit object versions in chunks of at most [`DELETE_BATCH_SIZE`]
+/// (the S3 `DeleteObjects` limit). Each `(key, version_id)` pair maps to one
+/// identifier; `on_batch` receives each batch's deleted count for running
+/// progress (mirrors [`delete_prefix`]).
+pub async fn delete_targets<F>(
+    client: &Client,
+    bucket: &str,
+    targets: &[(String, Option<String>)],
+    mut on_batch: F,
+) -> AppResult<()>
+where
+    F: FnMut(u64),
+{
+    for chunk in targets.chunks(DELETE_BATCH_SIZE) {
+        let ids = chunk
+            .iter()
+            .map(|(key, version_id)| {
+                ObjectIdentifier::builder()
+                    .key(key.clone())
+                    .set_version_id(version_id.clone())
+                    .build()
+                    .map_err(|e| AppError::Delete(e.to_string()))
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        on_batch(delete_batch(client, bucket, ids).await?);
     }
     Ok(())
 }

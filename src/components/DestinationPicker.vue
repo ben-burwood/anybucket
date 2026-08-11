@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import * as s3 from "../api/s3";
 import { errorMessage, type Folder } from "../types";
-import { breadcrumbs, parentPrefix } from "../store/useBrowser";
+import { breadcrumbs, isUnderAnyPrefix } from "../store/useBrowser";
 import { useBuckets } from "../store/useBuckets";
 import { useConnections } from "../store/useConnections";
 
@@ -88,7 +88,7 @@ const invalidReason = computed<string | null>(() => {
   if (destBucket.value !== props.sourceBucket) return null;
   if (destPrefix.value === props.sourcePrefix)
     return "This is the current location of the selected items.";
-  if (props.sourceFolderPrefixes.some((src) => destPrefix.value.startsWith(src)))
+  if (isUnderAnyPrefix(destPrefix.value, props.sourceFolderPrefixes))
     return "Can’t move a folder into itself.";
   return null;
 });
@@ -101,7 +101,7 @@ const canConfirm = computed(
 function folderInvalid(folder: Folder): boolean {
   return (
     destBucket.value === props.sourceBucket &&
-    props.sourceFolderPrefixes.some((src) => folder.prefix.startsWith(src))
+    isUnderAnyPrefix(folder.prefix, props.sourceFolderPrefixes)
   );
 }
 

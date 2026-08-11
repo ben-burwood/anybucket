@@ -21,6 +21,7 @@ import {
 } from "ag-grid-community";
 import {
   breadcrumbs,
+  isUnderAnyPrefix,
   parentPrefix,
   useBrowser,
   type Crumb,
@@ -222,31 +223,6 @@ function cancelTransfer() {
   pickerOpen.value = false;
 }
 
-/** Confirm overwriting existing keys at `bucket`. Returns false only on cancel. */
-async function confirmDestOverwrite(
-  bucket: string,
-  files: { dstKey: string; name: string }[],
-): Promise<boolean> {
-  if (files.length === 0) return true;
-  if (files.length > OVERWRITE_CHECK_LIMIT) {
-    return confirm(
-      `Transfer ${files.length} files here? Any existing files with the same names at the destination will be overwritten.`,
-    );
-  }
-  const existing = await Promise.all(
-    files.map((f) => s3.objectExists(bucket, f.dstKey).catch(() => false)),
-  );
-  const collisions = files.filter((_, i) => existing[i]).map((f) => f.name);
-  if (collisions.length === 0) return true;
-
-  const list = collisions.slice(0, 10).join("\n");
-  const more =
-    collisions.length > 10 ? `\n…and ${collisions.length - 10} more` : "";
-  return confirm(
-    `${collisions.length} file(s) already exist at the destination and will be overwritten:\n\n${list}${more}\n\nContinue?`,
-  );
-}
-
 /**
  * Build the copy/move payload from `rows`, warn before overwriting, run the
  * transfer, then refresh. Returns true on success. Shared by the destination
@@ -270,9 +246,10 @@ async function executeTransfer(
   if (!objects.length && !prefixes.length) return false;
 
   // Warn before overwriting existing files at the destination (files only).
-  const overwriteOk = await confirmDestOverwrite(
+  const overwriteOk = await confirmOverwrite(
     destBucket,
-    objects.map((o, i) => ({ dstKey: o.dstKey, name: fileRows[i].name })),
+    objects.map((o, i) => ({ key: o.dstKey, label: fileRows[i].name })),
+    "Transfer",
   );
   if (!overwriteOk) return false;
 
@@ -373,13 +350,10 @@ function onRowDragEnd(e: RowDragEndEvent<Row>) {
   );
   if (!rows.length) return;
   // Never drop a folder into itself or one of its own descendants.
-  if (
-    rows.some(
-      (r) =>
-        r.kind === "folder" && r.prefix != null && over.prefix!.startsWith(r.prefix),
-    )
-  )
-    return;
+  const draggedFolderPrefixes = rows
+    .filter((r) => r.kind === "folder" && r.prefix != null)
+    .map((r) => r.prefix!);
+  if (isUnderAnyPrefix(over.prefix, draggedFolderPrefixes)) return;
 
   // Alt-drag copies; a plain drag moves — but only where deletes are allowed,
   // otherwise it falls back to a copy.
@@ -429,6 +403,8 @@ const UPLOAD_CONCURRENCY = 5;
 // Above this many files we skip the per-file existence check (which is one HEAD
 // each) and show a single generic overwrite warning instead.
 const OVERWRITE_CHECK_LIMIT = 100;
+// Cap on concurrent existence probes (HEADs) when checking for overwrites.
+const OVERWRITE_PROBE_CONCURRENCY = 8;
 
 /**
  * Open the native picker and upload the selection. A single native dialog can't
@@ -458,7 +434,14 @@ async function uploadFiles(paths: string[]) {
     }));
     if (files.length === 0) return;
 
-    if (!(await confirmOverwrite(files))) return;
+    if (
+      !(await confirmOverwrite(
+        props.bucket,
+        files.map((f) => ({ key: f.key, label: f.relKey })),
+        "Upload",
+      ))
+    )
+      return;
 
     // Concurrency-capped upload; `uploads.start` resolves per file (never throws).
     await runWithLimit(files, UPLOAD_CONCURRENCY, (f) =>
@@ -471,28 +454,42 @@ async function uploadFiles(paths: string[]) {
   }
 }
 
-/** Confirm overwriting existing keys. Returns false only if the user cancels. */
+/**
+ * Confirm overwriting existing keys at `bucket`. Returns false only if the user
+ * cancels. Each file carries the `key` to probe and a `label` shown per
+ * collision; `verb` seeds the warning copy ("Upload" / "Transfer"). Shared by
+ * the upload and copy/move paths.
+ */
 async function confirmOverwrite(
-  files: { key: string; relKey: string }[],
+  bucket: string,
+  files: { key: string; label: string }[],
+  verb: string,
 ): Promise<boolean> {
+  if (files.length === 0) return true;
   // Big batches (whole folders): one generic warning, no HEAD-per-file storm.
   if (files.length > OVERWRITE_CHECK_LIMIT) {
     return confirm(
-      `Upload ${files.length} files here? Any existing files with the same names will be overwritten.`,
+      `${verb} ${files.length} files here? Any existing files with the same names will be overwritten.`,
     );
   }
 
-  const existing = await Promise.all(
-    files.map((f) => s3.objectExists(props.bucket, f.key).catch(() => false)),
+  // Probe existence with bounded concurrency rather than one HEAD per file at once.
+  const existing = new Array<boolean>(files.length);
+  await runWithLimit(
+    files.map((f, i) => ({ f, i })),
+    OVERWRITE_PROBE_CONCURRENCY,
+    async ({ f, i }) => {
+      existing[i] = await s3.objectExists(bucket, f.key).catch(() => false);
+    },
   );
-  const collisions = files.filter((_, i) => existing[i]).map((f) => f.relKey);
+  const collisions = files.filter((_, i) => existing[i]).map((f) => f.label);
   if (collisions.length === 0) return true;
 
   const list = collisions.slice(0, 10).join("\n");
   const more =
     collisions.length > 10 ? `\n…and ${collisions.length - 10} more` : "";
   return confirm(
-    `${collisions.length} file(s) already exist here and will be overwritten:\n\n${list}${more}\n\nContinue?`,
+    `${collisions.length} file(s) already exist and will be overwritten:\n\n${list}${more}\n\nContinue?`,
   );
 }
 

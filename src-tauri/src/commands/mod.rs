@@ -1,5 +1,5 @@
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::{CompletedPart, ObjectIdentifier};
+use aws_sdk_s3::types::CompletedPart;
 use aws_smithy_types::byte_stream::Length;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
@@ -26,9 +26,6 @@ const PROGRESS_STEP: u64 = 256 * 1024;
 /// multipart. Also the per-part size (≥ S3's 5 MiB minimum).
 const MULTIPART_THRESHOLD: u64 = 16 * 1024 * 1024;
 const PART_SIZE: u64 = 16 * 1024 * 1024;
-
-/// Maximum objects per `DeleteObjects` request (the S3 API limit).
-const DELETE_BATCH_SIZE: usize = 1000;
 
 type Shared<'a> = State<'a, Mutex<AppState>>;
 
@@ -513,8 +510,8 @@ pub async fn delete_objects(
     let client = client_for_active(&state).await?;
 
     // Accumulate outside the worker so a mid-way failure can still report the
-    // partial count in the terminal event. Each batch is ≤ DELETE_BATCH_SIZE
-    // objects, so emitting once per batch is already a coarse enough throttle.
+    // partial count in the terminal event. Emitting once per delete batch is
+    // already a coarse enough throttle.
     let mut deleted: u64 = 0;
     let emit = |total| {
         let _ = on_progress.send(DeleteProgress {
@@ -524,21 +521,16 @@ pub async fn delete_objects(
         });
     };
     let result: AppResult<()> = async {
-        // Explicit objects (files / specific version rows), chunked to the limit.
-        for chunk in objects.chunks(DELETE_BATCH_SIZE) {
-            let ids = chunk
-                .iter()
-                .map(|t| {
-                    ObjectIdentifier::builder()
-                        .key(t.key.clone())
-                        .set_version_id(t.version_id.clone())
-                        .build()
-                        .map_err(|e| AppError::Delete(e.to_string()))
-                })
-                .collect::<AppResult<Vec<_>>>()?;
-            deleted += ops::delete_batch(&client, &bucket, ids).await?;
+        // Explicit objects (files / specific version rows).
+        let targets: Vec<(String, Option<String>)> = objects
+            .iter()
+            .map(|t| (t.key.clone(), t.version_id.clone()))
+            .collect();
+        ops::delete_targets(&client, &bucket, &targets, |n| {
+            deleted += n;
             emit(deleted);
-        }
+        })
+        .await?;
         // Folders: the ops layer owns the list-and-delete pagination per prefix.
         for prefix in &prefixes {
             ops::delete_prefix(&client, &bucket, prefix, |n| {
@@ -677,19 +669,11 @@ pub async fn transfer_objects(
         // Move — only once every copy succeeded, delete the sources (reusing the
         // existing delete plumbing).
         if is_move {
-            for chunk in objects.chunks(DELETE_BATCH_SIZE) {
-                let ids = chunk
-                    .iter()
-                    .map(|o| {
-                        ObjectIdentifier::builder()
-                            .key(o.key.clone())
-                            .set_version_id(o.version_id.clone())
-                            .build()
-                            .map_err(|e| AppError::Delete(e.to_string()))
-                    })
-                    .collect::<AppResult<Vec<_>>>()?;
-                ops::delete_batch(&client, &src_bucket, ids).await?;
-            }
+            let targets: Vec<(String, Option<String>)> = objects
+                .iter()
+                .map(|o| (o.key.clone(), o.version_id.clone()))
+                .collect();
+            ops::delete_targets(&client, &src_bucket, &targets, |_| {}).await?;
             for p in &prefixes {
                 ops::delete_prefix(&client, &src_bucket, &p.src_prefix, |_| {}).await?;
             }
