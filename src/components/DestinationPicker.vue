@@ -39,6 +39,7 @@ const buckets = useBuckets();
 
 const destBucket = ref("");
 const destPrefix = ref("");
+const pathInput = ref("");
 const folders = ref<Folder[]>([]);
 const loading = ref(false);
 const listError = ref<string | null>(null);
@@ -69,6 +70,7 @@ function navigate(prefix: string) {
   if (props.busy) return;
   destPrefix.value = prefix;
   closeNewFolder();
+  syncInput();
   loadFolders();
 }
 
@@ -77,7 +79,34 @@ function switchBucket(bucket: string) {
   destBucket.value = bucket;
   destPrefix.value = "";
   closeNewFolder();
+  syncInput();
   loadFolders();
+}
+
+function syncInput() {
+  pathInput.value = `s3://${destBucket.value}/${destPrefix.value}`;
+}
+
+// Parse the typed path (`s3://bucket/prefix`, `bucket/prefix`, or bare bucket),
+// apply it to the bucket + prefix, and refresh the browser (input → picker). The
+// destination folder need not exist yet — you can type a brand-new path to copy
+// into. Run on Enter/blur rather than per-keystroke to avoid re-listing mid-type.
+function applyPath() {
+  if (props.busy) return;
+  const raw = pathInput.value.trim().replace(/^s3:\/\//i, "");
+  const slash = raw.indexOf("/");
+  const bucket = slash === -1 ? raw : raw.slice(0, slash);
+  let prefix = slash === -1 ? "" : raw.slice(slash + 1).replace(/^\/+/, "");
+  // A folder prefix is either empty (root) or ends in a single slash.
+  if (prefix && !prefix.endsWith("/")) prefix += "/";
+
+  const nextBucket = bucket || destBucket.value; // blank bucket keeps the current one
+  const changed = nextBucket !== destBucket.value || prefix !== destPrefix.value;
+  destBucket.value = nextBucket;
+  destPrefix.value = prefix;
+  closeNewFolder();
+  syncInput(); // normalize the field back (adds s3://, trailing slash)
+  if (changed) loadFolders();
 }
 
 const crumbs = computed(() => breadcrumbs(destPrefix.value));
@@ -166,6 +195,7 @@ watch(
     destBucket.value = props.sourceBucket;
     destPrefix.value = props.sourcePrefix;
     closeNewFolder();
+    syncInput();
     buckets.ensure(conns.state.active?.id);
     loadFolders();
   },
@@ -288,12 +318,21 @@ watch(
         </div>
 
         <!-- Destination + hints -->
-        <p
-          class="mt-3 truncate text-xs text-slate-500 dark:text-slate-400"
-          :title="destUri"
-        >
-          Destination: <span class="font-mono">{{ destUri }}</span>
-        </p>
+        <div class="mt-3 flex items-center gap-2 text-xs">
+          <span class="text-slate-500 dark:text-slate-400">Path</span>
+          <input
+            v-model="pathInput"
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="s3://bucket/prefix/"
+            :disabled="busy"
+            :title="destUri"
+            class="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-60 dark:border-night-700 dark:bg-night-800"
+            @keydown.enter="applyPath"
+            @blur="applyPath"
+          />
+        </div>
         <p
           v-if="invalidReason && !busy"
           class="mt-1 text-xs text-amber-600 dark:text-amber-400"
