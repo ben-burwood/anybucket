@@ -197,6 +197,26 @@ export function transferObjects(
 }
 
 /**
+ * Rename the current object at `key` to `newKey` within the same `bucket` — a
+ * single-object move (copy to the new key, then delete the old), so it needs a
+ * read-write-delete connection. Resolves once the copy + delete complete.
+ */
+export function renameObject(
+  bucket: string,
+  key: string,
+  newKey: string,
+): Promise<number> {
+  return transferObjects(
+    bucket,
+    bucket,
+    [{ key, versionId: null, dstKey: newKey }],
+    [],
+    true,
+    () => {},
+  );
+}
+
+/**
  * Compute exact size + object count by fully scanning the bucket. `onProgress`
  * receives throttled running totals and a terminal `done` event.
  */

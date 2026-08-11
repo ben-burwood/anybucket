@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import * as s3 from "../api/s3";
 import { useDownloads } from "../store/useDownloads";
 import { useConnections } from "../store/useConnections";
+import { parentPrefix } from "../store/useBrowser";
 import { errorMessage, type ObjectItem, type ObjectMeta } from "../types";
 import { formatDate, formatSize } from "../utils/format";
 import CopyableValue from "./CopyableValue.vue";
@@ -131,18 +132,15 @@ async function doRename() {
     closeRename(); // no-op
     return;
   }
-  // Same folder, new final segment: strip the display name off the key.
-  const dir = props.object.key.slice(
-    0,
-    props.object.key.length - props.object.name.length,
-  );
-  const newKey = `${dir}${name}`;
+  // Rename stays in the same folder: keep the object's prefix, swap the name.
+  const newKey = `${parentPrefix(props.object.key)}${name}`;
 
   try {
-    if (await s3.objectExists(props.bucket, newKey)) {
-      if (!confirm(`“${name}” already exists here and will be overwritten. Continue?`))
-        return;
-    }
+    if (
+      (await s3.objectExists(props.bucket, newKey)) &&
+      !confirm(`“${name}” already exists here and will be overwritten. Continue?`)
+    )
+      return;
   } catch {
     // If the existence probe fails, fall through and let the rename surface it.
   }
@@ -150,14 +148,7 @@ async function doRename() {
   renaming.value = true;
   error.value = null;
   try {
-    await s3.transferObjects(
-      props.bucket,
-      props.bucket,
-      [{ key: props.object.key, versionId: null, dstKey: newKey }],
-      [],
-      true, // move: copy to the new key, then delete the old
-      () => {},
-    );
+    await s3.renameObject(props.bucket, props.object.key, newKey);
     emit("renamed");
   } catch (e) {
     error.value = errorMessage(e);
