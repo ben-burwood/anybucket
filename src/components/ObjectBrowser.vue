@@ -89,7 +89,7 @@ async function refreshAfterMutation() {
   metricsCache.invalidate(conns.state.active?.id, props.bucket);
 }
 
-async function onObjectRenamed() {
+async function onDetailMutated() {
   selected.value = null;
   await refreshAfterMutation();
 }
@@ -145,6 +145,7 @@ async function createFolder() {
 const selectedRows = ref<Row[]>([]);
 function onSelectionChanged(e: SelectionChangedEvent<Row>) {
   selectedRows.value = e.api.getSelectedRows();
+  closeRenameMenu(); // the rename target may have changed
 }
 
 const deleteModalOpen = ref(false);
@@ -392,6 +393,83 @@ function setDragHighlight(rowId: string | null) {
     root?.querySelector(sel(highlightedRowId))?.classList.remove("drag-over-folder");
   if (rowId) root?.querySelector(sel(rowId))?.classList.add("drag-over-folder");
   highlightedRowId = rowId;
+}
+
+// --- Rename --------------------------------------------------------------
+
+// Toolbar rename: enabled only when exactly one current file is selected on a
+// delete-capable connection (rename = copy + delete of the old key). Same as the
+// side panel's rename, exposed as a compact popover for consistency.
+const renameTarget = computed<Row | null>(() => {
+  if (!conns.canDelete.value || selectedRows.value.length !== 1) return null;
+  const r = selectedRows.value[0];
+  if (!r.object || r.object.isDeleteMarker || r.object.isLatest === false) return null;
+  return r;
+});
+
+const renameMenuOpen = ref(false);
+const renameName = ref("");
+const renameError = ref<string | null>(null);
+const renaming = ref(false);
+const renameInput = ref<HTMLInputElement | null>(null);
+
+function openRenameMenu() {
+  const r = renameTarget.value;
+  if (!r) return;
+  renameName.value = r.name;
+  renameError.value = null;
+  renameMenuOpen.value = true;
+  nextTick(() => renameInput.value?.focus());
+}
+
+function closeRenameMenu() {
+  renameMenuOpen.value = false;
+  renameName.value = "";
+  renameError.value = null;
+}
+
+async function submitRename() {
+  const r = renameTarget.value;
+  if (!r?.object) return;
+  const name = renameName.value.trim();
+  if (!name) {
+    renameError.value = "Enter a name.";
+    return;
+  }
+  if (name.includes("/")) {
+    renameError.value = "Name cannot contain “/”.";
+    return;
+  }
+  if (name === r.name) {
+    closeRenameMenu(); // no-op
+    return;
+  }
+  // Rename stays in the same folder: keep the object's prefix, swap the name.
+  const newKey = `${parentPrefix(r.object.key)}${name}`;
+
+  try {
+    if (
+      (await s3.objectExists(props.bucket, newKey)) &&
+      !confirm(`“${name}” already exists here and will be overwritten. Continue?`)
+    )
+      return;
+  } catch {
+    // If the existence probe fails, fall through and let the rename surface it.
+  }
+
+  renaming.value = true;
+  renameError.value = null;
+  try {
+    await s3.renameObject(props.bucket, r.object.key, newKey);
+    closeRenameMenu();
+    gridApi?.deselectAll();
+    selectedRows.value = [];
+    await refreshAfterMutation();
+  } catch (e) {
+    renameError.value = errorMessage(e);
+  } finally {
+    renaming.value = false;
+  }
 }
 
 // --- Uploads -------------------------------------------------------------
@@ -826,6 +904,53 @@ watch(
           >
             ✂ Move ({{ selectedRows.length }})
           </button>
+          <div v-if="renameTarget" class="relative">
+            <button
+              class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
+              title="Rename the selected object"
+              @click="renameMenuOpen ? closeRenameMenu() : openRenameMenu()"
+            >
+              ✏️ Rename
+            </button>
+            <template v-if="renameMenuOpen">
+              <!-- Click-catcher: closes the popover on any outside click. -->
+              <div class="fixed inset-0 z-40" @click="closeRenameMenu" />
+              <div
+                class="absolute right-0 top-full z-50 mt-1 w-64 rounded-md border border-slate-200 bg-white p-2 text-xs shadow-lg dark:border-night-700 dark:bg-night-900"
+              >
+                <input
+                  ref="renameInput"
+                  v-model="renameName"
+                  type="text"
+                  placeholder="New name"
+                  spellcheck="false"
+                  autocomplete="off"
+                  class="w-full rounded border border-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-night-700 dark:bg-night-800"
+                  :disabled="renaming"
+                  @keydown.enter="submitRename"
+                  @keydown.esc="closeRenameMenu"
+                />
+                <p v-if="renameError" class="mt-1 text-rose-600 dark:text-rose-400">
+                  {{ renameError }}
+                </p>
+                <div class="mt-2 flex justify-end gap-1.5">
+                  <button
+                    class="rounded px-2 py-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-night-800"
+                    @click="closeRenameMenu"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    class="rounded bg-emerald-600 px-2 py-1 font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                    :disabled="renaming"
+                    @click="submitRename"
+                  >
+                    {{ renaming ? "Renaming…" : "Rename" }}
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
           <button
             v-if="conns.canDelete.value && selectedRows.length"
             class="rounded border border-rose-300 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
@@ -1071,7 +1196,8 @@ watch(
       :bucket="bucket"
       :object="selected"
       @close="selected = null"
-      @renamed="onObjectRenamed"
+      @renamed="onDetailMutated"
+      @deleted="onDetailMutated"
     />
 
     <ConfirmModal

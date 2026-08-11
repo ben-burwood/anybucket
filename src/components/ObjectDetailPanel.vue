@@ -10,7 +10,7 @@ import { formatDate, formatSize } from "../utils/format";
 import CopyableValue from "./CopyableValue.vue";
 
 const props = defineProps<{ bucket: string; object: ObjectItem }>();
-const emit = defineEmits<{ close: []; renamed: [] }>();
+const emit = defineEmits<{ close: []; renamed: []; deleted: [] }>();
 
 const downloads = useDownloads();
 const conns = useConnections();
@@ -154,6 +154,32 @@ async function doRename() {
     error.value = errorMessage(e);
   } finally {
     renaming.value = false;
+  }
+}
+
+// --- Delete --------------------------------------------------------------
+
+// Delete this object (its specific version when viewing one). Needs delete
+// rights; allowed for any row, including delete markers (removing a marker
+// restores the prior version).
+const deleting = ref(false);
+
+async function doDelete() {
+  if (!confirm(`Delete “${props.object.name}”? This cannot be undone.`)) return;
+  deleting.value = true;
+  error.value = null;
+  try {
+    await s3.deleteObjects(
+      props.bucket,
+      [{ key: props.object.key, versionId: props.object.versionId }],
+      [],
+      () => {},
+    );
+    emit("deleted");
+  } catch (e) {
+    error.value = errorMessage(e);
+  } finally {
+    deleting.value = false;
   }
 }
 
@@ -331,6 +357,16 @@ onMounted(loadDetails);
           </button>
         </div>
       </template>
+
+      <!-- Delete (delete-capable connection); works on any row incl. markers -->
+      <button
+        v-if="conns.canDelete.value"
+        class="w-full rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+        :disabled="deleting"
+        @click="doDelete"
+      >
+        {{ deleting ? "Deleting…" : "🗑 Delete" }}
+      </button>
 
       <button
         v-if="!object.isDeleteMarker"
