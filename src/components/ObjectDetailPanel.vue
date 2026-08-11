@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as s3 from "../api/s3";
 import { useDownloads } from "../store/useDownloads";
+import { useConnections } from "../store/useConnections";
+import { parentPrefix } from "../store/useBrowser";
 import { errorMessage, type ObjectItem, type ObjectMeta } from "../types";
 import { formatDate, formatSize } from "../utils/format";
 import CopyableValue from "./CopyableValue.vue";
 
 const props = defineProps<{ bucket: string; object: ObjectItem }>();
-defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; renamed: []; deleted: [] }>();
 
 const downloads = useDownloads();
+const conns = useConnections();
 
 const meta = ref<ObjectMeta | null>(null);
 const s3Uri = ref<string>("");
@@ -86,9 +89,109 @@ function download() {
   );
 }
 
+// --- Rename --------------------------------------------------------------
+
+// Rename = copy to the new key + delete the old one (a single-object move via
+// `transfer_objects`), so it needs delete rights. Only the live object can be
+// renamed — not a previous version or a delete marker.
+const canRename = computed(
+  () =>
+    conns.canDelete.value &&
+    !props.object.isDeleteMarker &&
+    props.object.isLatest !== false,
+);
+
+const renameOpen = ref(false);
+const renaming = ref(false);
+const newName = ref("");
+const renameInput = ref<HTMLInputElement | null>(null);
+
+function openRename() {
+  newName.value = props.object.name;
+  renameOpen.value = true;
+  error.value = null;
+  nextTick(() => renameInput.value?.focus());
+}
+
+function closeRename() {
+  renameOpen.value = false;
+  newName.value = "";
+}
+
+async function doRename() {
+  const name = newName.value.trim();
+  if (!name) {
+    error.value = "Enter a name.";
+    return;
+  }
+  if (name.includes("/")) {
+    error.value = "Name cannot contain “/”.";
+    return;
+  }
+  if (name === props.object.name) {
+    closeRename(); // no-op
+    return;
+  }
+  // Rename stays in the same folder: keep the object's prefix, swap the name.
+  const newKey = `${parentPrefix(props.object.key)}${name}`;
+
+  try {
+    if (
+      (await s3.objectExists(props.bucket, newKey)) &&
+      !confirm(`“${name}” already exists here and will be overwritten. Continue?`)
+    )
+      return;
+  } catch {
+    // If the existence probe fails, fall through and let the rename surface it.
+  }
+
+  renaming.value = true;
+  error.value = null;
+  try {
+    await s3.renameObject(props.bucket, props.object.key, newKey);
+    emit("renamed");
+  } catch (e) {
+    error.value = errorMessage(e);
+  } finally {
+    renaming.value = false;
+  }
+}
+
+// --- Delete --------------------------------------------------------------
+
+// Delete this object (its specific version when viewing one). Needs delete
+// rights; allowed for any row, including delete markers (removing a marker
+// restores the prior version).
+const deleting = ref(false);
+
+async function doDelete() {
+  if (!confirm(`Delete “${props.object.name}”? This cannot be undone.`)) return;
+  deleting.value = true;
+  error.value = null;
+  try {
+    await s3.deleteObjects(
+      props.bucket,
+      [{ key: props.object.key, versionId: props.object.versionId }],
+      [],
+      () => {},
+    );
+    emit("deleted");
+  } catch (e) {
+    error.value = errorMessage(e);
+  } finally {
+    deleting.value = false;
+  }
+}
+
 // Watch key AND versionId so switching between two versions of the same key
 // (unchanged key) still reloads the details for the newly selected version.
-watch(() => [props.object.key, props.object.versionId], loadDetails);
+watch(
+  () => [props.object.key, props.object.versionId],
+  () => {
+    closeRename();
+    loadDetails();
+  },
+);
 onMounted(loadDetails);
 </script>
 
@@ -214,7 +317,57 @@ onMounted(loadDetails);
     </div>
 
     <!-- Actions -->
-    <footer class="border-t border-slate-200 p-3 dark:border-night-800">
+    <footer class="space-y-2 border-t border-slate-200 p-3 dark:border-night-800">
+      <!-- Rename (current object on a delete-capable connection only) -->
+      <template v-if="canRename">
+        <button
+          v-if="!renameOpen"
+          class="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
+          @click="openRename"
+        >
+          ✏️ Rename
+        </button>
+        <div v-else class="flex items-center gap-1.5">
+          <input
+            ref="renameInput"
+            v-model="newName"
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+            class="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-night-700 dark:bg-night-800"
+            :disabled="renaming"
+            @keydown.enter="doRename"
+            @keydown.esc="closeRename"
+          />
+          <button
+            class="shrink-0 rounded bg-emerald-600 px-2.5 py-1 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+            :disabled="renaming"
+            title="Rename"
+            @click="doRename"
+          >
+            {{ renaming ? "…" : "✓" }}
+          </button>
+          <button
+            class="shrink-0 rounded px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 disabled:opacity-60 dark:hover:bg-night-800"
+            :disabled="renaming"
+            title="Cancel"
+            @click="closeRename"
+          >
+            ✕
+          </button>
+        </div>
+      </template>
+
+      <!-- Delete (delete-capable connection); works on any row incl. markers -->
+      <button
+        v-if="conns.canDelete.value"
+        class="w-full rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
+        :disabled="deleting"
+        @click="doDelete"
+      >
+        {{ deleting ? "Deleting…" : "🗑 Delete" }}
+      </button>
+
       <button
         v-if="!object.isDeleteMarker"
         class="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
