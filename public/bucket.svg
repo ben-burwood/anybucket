@@ -1,0 +1,11 @@
+<svg viewBox="154 129 716 716" xmlns="http://www.w3.org/2000/svg">
+  <!-- Handle -->
+  <path d="M 292 352 C 300 150, 724 150, 732 352"
+        fill="none" stroke="#16a34a" stroke-width="42" stroke-linecap="round"/>
+  <!-- Bucket body -->
+  <path d="M 250 356 L 340 800 A 172 44 0 0 0 684 800 L 774 356 Z" fill="#16a34a"/>
+  <!-- Rim -->
+  <ellipse cx="512" cy="356" rx="262" ry="70" fill="#16a34a"/>
+  <!-- Inner opening -->
+  <ellipse cx="512" cy="360" rx="222" ry="54" fill="#0f5027"/>
+</svg>

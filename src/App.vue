@@ -34,9 +34,7 @@ function onTitlebarDblClick(e: MouseEvent) {
         to="/"
         class="flex items-center gap-2 text-sm font-semibold tracking-tight"
       >
-        <span
-          class="inline-block h-5 w-5 rounded bg-gradient-to-b from-emerald-500 to-green-600"
-        />
+        <img src="/bucket.svg" alt="" class="h-5 w-5" />
         AnyBucket
       </RouterLink>
 
