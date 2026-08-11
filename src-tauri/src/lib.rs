@@ -43,6 +43,7 @@ pub fn run() {
             commands::upload_object,
             commands::create_folder,
             commands::delete_objects,
+            commands::transfer_objects,
             commands::scan_bucket_metrics,
         ])
         .run(tauri::generate_context!())

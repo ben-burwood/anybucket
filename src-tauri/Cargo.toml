@@ -1,6 +1,6 @@
 [package]
 name = "anybucket"
-version = "0.3.0"
+version = "0.4.0"
 description = "Desktop explorer for S3-compatible object stores"
 authors = ["Ben Burwood"]
 license = "MIT"
@@ -38,6 +38,7 @@ serde_json = "1"
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 url = "2"
+percent-encoding = "2"
 
 [features]
 # By default Tauri runs in production mode; `tauri dev` toggles custom-protocol off.

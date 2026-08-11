@@ -1,5 +1,5 @@
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::{CompletedPart, ObjectIdentifier};
+use aws_sdk_s3::types::CompletedPart;
 use aws_smithy_types::byte_stream::Length;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
@@ -10,8 +10,8 @@ use tokio::sync::Mutex;
 use crate::connections::{Connection, ConnectionInput};
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    Bucket, BucketMetrics, DeleteProgress, DownloadProgress, Listing, ListParams, ObjectMeta,
-    ScanProgress, UploadEntry, UploadProgress,
+    Bucket, BucketMetrics, CopyProgress, DeleteProgress, DownloadProgress, Listing, ListParams,
+    ObjectMeta, ScanProgress, UploadEntry, UploadProgress,
 };
 use crate::s3::{self, metrics, ops};
 use crate::state::AppState;
@@ -26,9 +26,6 @@ const PROGRESS_STEP: u64 = 256 * 1024;
 /// multipart. Also the per-part size (≥ S3's 5 MiB minimum).
 const MULTIPART_THRESHOLD: u64 = 16 * 1024 * 1024;
 const PART_SIZE: u64 = 16 * 1024 * 1024;
-
-/// Maximum objects per `DeleteObjects` request (the S3 API limit).
-const DELETE_BATCH_SIZE: usize = 1000;
 
 type Shared<'a> = State<'a, Mutex<AppState>>;
 
@@ -513,8 +510,8 @@ pub async fn delete_objects(
     let client = client_for_active(&state).await?;
 
     // Accumulate outside the worker so a mid-way failure can still report the
-    // partial count in the terminal event. Each batch is ≤ DELETE_BATCH_SIZE
-    // objects, so emitting once per batch is already a coarse enough throttle.
+    // partial count in the terminal event. Emitting once per delete batch is
+    // already a coarse enough throttle.
     let mut deleted: u64 = 0;
     let emit = |total| {
         let _ = on_progress.send(DeleteProgress {
@@ -524,21 +521,16 @@ pub async fn delete_objects(
         });
     };
     let result: AppResult<()> = async {
-        // Explicit objects (files / specific version rows), chunked to the limit.
-        for chunk in objects.chunks(DELETE_BATCH_SIZE) {
-            let ids = chunk
-                .iter()
-                .map(|t| {
-                    ObjectIdentifier::builder()
-                        .key(t.key.clone())
-                        .set_version_id(t.version_id.clone())
-                        .build()
-                        .map_err(|e| AppError::Delete(e.to_string()))
-                })
-                .collect::<AppResult<Vec<_>>>()?;
-            deleted += ops::delete_batch(&client, &bucket, ids).await?;
+        // Explicit objects (files / specific version rows).
+        let targets: Vec<(String, Option<String>)> = objects
+            .iter()
+            .map(|t| (t.key.clone(), t.version_id.clone()))
+            .collect();
+        ops::delete_targets(&client, &bucket, &targets, |n| {
+            deleted += n;
             emit(deleted);
-        }
+        })
+        .await?;
         // Folders: the ops layer owns the list-and-delete pagination per prefix.
         for prefix in &prefixes {
             ops::delete_prefix(&client, &bucket, prefix, |n| {
@@ -559,6 +551,145 @@ pub async fn delete_objects(
         error,
     });
     result.map(|()| deleted)
+}
+
+// ---------------------------------------------------------------------------
+// Copy / Move
+// ---------------------------------------------------------------------------
+
+/// A single explicit object to copy/move: its source key (+ optional version)
+/// and the destination key it should land at.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyTarget {
+    pub key: String,
+    pub version_id: Option<String>,
+    pub dst_key: String,
+}
+
+/// A folder to copy/move recursively: every object under `src_prefix` is
+/// re-keyed under `dst_prefix`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyPrefix {
+    pub src_prefix: String,
+    pub dst_prefix: String,
+}
+
+/// Copy (or, when `is_move`, copy-then-delete) the given explicit `objects` and
+/// recursive folder `prefixes` from `src_bucket` to `dst_bucket`. Streams a
+/// running copied-count and a terminal `done`/`error` event; returns the total
+/// number of objects copied.
+///
+/// Copy needs write access; a move also needs delete access (for the source). A
+/// move copies everything first and only deletes the sources once every copy
+/// succeeded, so a failure can duplicate data but never lose it.
+#[tauri::command]
+pub async fn transfer_objects(
+    src_bucket: String,
+    dst_bucket: String,
+    objects: Vec<CopyTarget>,
+    prefixes: Vec<CopyPrefix>,
+    is_move: bool,
+    on_progress: Channel<CopyProgress>,
+    state: Shared<'_>,
+) -> AppResult<u64> {
+    // Enforce the mode gate(s) before doing anything else.
+    {
+        let st = state.lock().await;
+        st.require_writable()?;
+        if is_move {
+            st.require_deletable()?;
+        }
+    }
+    let client = client_for_active(&state).await?;
+
+    let same_bucket = src_bucket == dst_bucket;
+
+    // Validate up front: never copy an object onto itself, and never copy a
+    // folder into itself or a descendant (that recurses forever and, on a move,
+    // would delete freshly-copied data).
+    for o in &objects {
+        if same_bucket && o.key == o.dst_key {
+            return Err(AppError::Copy(format!(
+                "source and destination are the same: {}",
+                o.key
+            )));
+        }
+    }
+    for p in &prefixes {
+        if same_bucket && p.dst_prefix.starts_with(&p.src_prefix) {
+            return Err(AppError::Copy(format!(
+                "cannot copy folder “{}” into itself",
+                p.src_prefix
+            )));
+        }
+    }
+
+    // Accumulate outside the worker so a mid-way failure still reports the
+    // partial count in the terminal event.
+    let mut copied: u64 = 0;
+    let emit = |total| {
+        let _ = on_progress.send(CopyProgress {
+            copied: total,
+            done: false,
+            error: None,
+        });
+    };
+    let result: AppResult<()> = async {
+        // Copy phase — explicit objects first, then recursive folders.
+        for o in &objects {
+            ops::copy_object(
+                &client,
+                &src_bucket,
+                &o.key,
+                o.version_id.as_deref(),
+                &dst_bucket,
+                &o.dst_key,
+            )
+            .await?;
+            copied += 1;
+            emit(copied);
+        }
+        for p in &prefixes {
+            ops::copy_prefix(
+                &client,
+                &src_bucket,
+                &p.src_prefix,
+                &dst_bucket,
+                &p.dst_prefix,
+                |n| {
+                    copied += n;
+                    emit(copied);
+                },
+            )
+            .await?;
+        }
+
+        // Move — only once every copy succeeded, delete the sources (reusing the
+        // existing delete plumbing).
+        if is_move {
+            let targets: Vec<(String, Option<String>)> = objects
+                .iter()
+                .map(|o| (o.key.clone(), o.version_id.clone()))
+                .collect();
+            ops::delete_targets(&client, &src_bucket, &targets, |_| {}).await?;
+            for p in &prefixes {
+                ops::delete_prefix(&client, &src_bucket, &p.src_prefix, |_| {}).await?;
+            }
+        }
+        Ok(())
+    }
+    .await;
+
+    // Terminal event so the UI can settle its progress line either way.
+    let error = result.as_ref().err().map(|e| e.to_string());
+    let _ = on_progress.send(CopyProgress {
+        copied,
+        done: true,
+        error,
+    });
+    result.map(|()| copied)
 }
 
 // ---------------------------------------------------------------------------

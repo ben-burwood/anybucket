@@ -124,3 +124,11 @@ export function parentPrefix(prefix: string): string {
   parts.pop();
   return parts.length ? `${parts.join("/")}/` : "";
 }
+
+/**
+ * Whether `prefix` sits at or under any of `ancestors` — the "folder into
+ * itself / a descendant" test used to block invalid copy/move destinations.
+ */
+export function isUnderAnyPrefix(prefix: string, ancestors: string[]): boolean {
+  return ancestors.some((a) => prefix.startsWith(a));
+}

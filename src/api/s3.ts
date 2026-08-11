@@ -2,6 +2,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   Bucket,
   BucketMetrics,
+  CopyProgress,
   DeleteProgress,
   DownloadProgress,
   Listing,
@@ -151,6 +152,46 @@ export function deleteObjects(
     bucket,
     objects,
     prefixes,
+    onProgress: channel,
+  });
+}
+
+/** One explicit object to copy/move: source key (+ optional version) → dst key. */
+export interface CopyTarget {
+  key: string;
+  versionId?: string | null;
+  dstKey: string;
+}
+
+/** One folder to copy/move recursively: every key under `srcPrefix` → `dstPrefix`. */
+export interface CopyPrefix {
+  srcPrefix: string;
+  dstPrefix: string;
+}
+
+/**
+ * Copy (or, when `isMove`, move = copy-then-delete) the given explicit `objects`
+ * and recursive folder `prefixes` from `srcBucket` to `dstBucket`, using
+ * server-side CopyObject (bytes never travel through the app). Copy needs a
+ * read-write connection; a move needs read-write-delete. `onProgress` receives a
+ * running copied-count and a terminal `done` event; resolves with the total copied.
+ */
+export function transferObjects(
+  srcBucket: string,
+  dstBucket: string,
+  objects: CopyTarget[],
+  prefixes: CopyPrefix[],
+  isMove: boolean,
+  onProgress: (p: CopyProgress) => void,
+): Promise<number> {
+  const channel = new Channel<CopyProgress>();
+  channel.onmessage = onProgress;
+  return invoke("transfer_objects", {
+    srcBucket,
+    dstBucket,
+    objects,
+    prefixes,
+    isMove,
     onProgress: channel,
   });
 }

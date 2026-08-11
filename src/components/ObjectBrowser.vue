@@ -14,11 +14,14 @@ import {
   type GridApi,
   type GridReadyEvent,
   type RowClickedEvent,
+  type RowDragEndEvent,
+  type RowDragMoveEvent,
   type RowSelectionOptions,
   type SelectionChangedEvent,
 } from "ag-grid-community";
 import {
   breadcrumbs,
+  isUnderAnyPrefix,
   parentPrefix,
   useBrowser,
   type Crumb,
@@ -33,6 +36,7 @@ import { fileType, formatDate, formatSize } from "../utils/format";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
 import ConfirmModal from "./ConfirmModal.vue";
+import DestinationPicker from "./DestinationPicker.vue";
 
 const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
@@ -187,6 +191,204 @@ async function confirmDelete() {
   }
 }
 
+// --- Copy / Move ---------------------------------------------------------
+
+// The destination picker drives its own `busy`/progress/error while the
+// transfer runs; it closes only on success.
+const pickerOpen = ref(false);
+const pickerMode = ref<"copy" | "move">("copy");
+const transferBusy = ref(false);
+const transferProgress = ref<string | null>(null);
+const transferError = ref<string | null>(null);
+
+// Full prefixes of any selected folders — the picker greys these out (a folder
+// can't be moved into itself or a descendant).
+const sourceFolderPrefixes = computed(() =>
+  selectedRows.value
+    .filter((r) => r.kind === "folder" && r.prefix != null)
+    .map((r) => r.prefix!),
+);
+
+function openTransfer(mode: "copy" | "move") {
+  if (!conns.canWrite.value || !selectedRows.value.length) return;
+  if (mode === "move" && !conns.canDelete.value) return;
+  pickerMode.value = mode;
+  transferError.value = null;
+  transferProgress.value = null;
+  pickerOpen.value = true;
+}
+
+function cancelTransfer() {
+  if (transferBusy.value) return;
+  pickerOpen.value = false;
+}
+
+/**
+ * Build the copy/move payload from `rows`, warn before overwriting, run the
+ * transfer, then refresh. Returns true on success. Shared by the destination
+ * picker and drag-and-drop. `props.bucket` is always the source.
+ */
+async function executeTransfer(
+  rows: Row[],
+  destBucket: string,
+  destPrefix: string,
+  isMove: boolean,
+): Promise<boolean> {
+  const fileRows = rows.filter((r) => r.object);
+  const objects = fileRows.map((r) => ({
+    key: r.object!.key,
+    versionId: r.object!.versionId,
+    dstKey: `${destPrefix}${r.name}`,
+  }));
+  const prefixes = rows
+    .filter((r) => r.kind === "folder" && r.prefix != null)
+    .map((r) => ({ srcPrefix: r.prefix!, dstPrefix: `${destPrefix}${r.name}/` }));
+  if (!objects.length && !prefixes.length) return false;
+
+  // Warn before overwriting existing files at the destination (files only).
+  const overwriteOk = await confirmOverwrite(
+    destBucket,
+    objects.map((o, i) => ({ key: o.dstKey, label: fileRows[i].name })),
+    "Transfer",
+  );
+  if (!overwriteOk) return false;
+
+  transferBusy.value = true;
+  transferError.value = null;
+  transferProgress.value = isMove ? "Moving…" : "Copying…";
+  try {
+    await s3.transferObjects(
+      props.bucket,
+      destBucket,
+      objects,
+      prefixes,
+      isMove,
+      (p) => {
+        transferProgress.value = p.done
+          ? "Finishing…"
+          : `${isMove ? "Moved" : "Copied"} ${p.copied.toLocaleString()}…`;
+      },
+    );
+    gridApi?.deselectAll();
+    selectedRows.value = [];
+    await refreshAfterMutation();
+    // Cross-bucket transfers changed the destination bucket too.
+    if (destBucket !== props.bucket) {
+      metricsCache.invalidate(conns.state.active?.id, destBucket);
+    }
+    return true;
+  } catch (e) {
+    transferError.value = errorMessage(e);
+    return false;
+  } finally {
+    transferBusy.value = false;
+  }
+}
+
+/** Copy/move the current selection to the picked destination. */
+async function onDestinationConfirm(dest: { bucket: string; prefix: string }) {
+  const ok = await executeTransfer(
+    selectedRows.value,
+    dest.bucket,
+    dest.prefix,
+    pickerMode.value === "move",
+  );
+  if (ok) pickerOpen.value = false;
+}
+
+// --- Drag-and-drop (row → folder) ----------------------------------------
+
+// Dragging a row (or the whole selection) onto a folder row moves it there; an
+// Alt-drag copies instead. A small confirm modal precedes the transfer.
+const dragModalOpen = ref(false);
+const dragIsMove = ref(true);
+const dragRows = ref<Row[]>([]);
+const dragTarget = ref<{ name: string; prefix: string } | null>(null);
+
+const dragItems = computed(() =>
+  dragRows.value.map((r) => (r.kind === "folder" ? `${r.name}/  (folder)` : r.name)),
+);
+const dragTitle = computed(() =>
+  dragTarget.value
+    ? `${dragIsMove.value ? "Move" : "Copy"} ${dragRows.value.length} item(s) into “${dragTarget.value.name}/”?`
+    : "",
+);
+
+function rowKey(r: Row): string {
+  return getRowId({ data: r });
+}
+
+/** Rows a drag acts on: the whole selection if the dragged row is part of it,
+ *  otherwise just the dragged row. */
+function dragSourceRows(dragged: Row): Row[] {
+  const inSelection = selectedRows.value.some((r) => rowKey(r) === rowKey(dragged));
+  return inSelection && selectedRows.value.length
+    ? selectedRows.value.slice()
+    : [dragged];
+}
+
+function onRowDragMove(e: RowDragMoveEvent<Row>) {
+  const over = e.overNode?.data;
+  setDragHighlight(
+    over && over.kind === "folder" && over.prefix != null ? rowKey(over) : null,
+  );
+}
+
+function onRowDragLeave() {
+  setDragHighlight(null);
+}
+
+function onRowDragEnd(e: RowDragEndEvent<Row>) {
+  setDragHighlight(null);
+  const over = e.overNode?.data;
+  const dragged = e.node?.data;
+  if (!dragged || !over || over.kind !== "folder" || over.prefix == null) return;
+
+  // Sources = the drag set minus the drop target itself.
+  const rows = dragSourceRows(dragged).filter(
+    (r) => !(r.kind === "folder" && r.prefix === over.prefix),
+  );
+  if (!rows.length) return;
+  // Never drop a folder into itself or one of its own descendants.
+  const draggedFolderPrefixes = rows
+    .filter((r) => r.kind === "folder" && r.prefix != null)
+    .map((r) => r.prefix!);
+  if (isUnderAnyPrefix(over.prefix, draggedFolderPrefixes)) return;
+
+  // Alt-drag copies; a plain drag moves — but only where deletes are allowed,
+  // otherwise it falls back to a copy.
+  dragIsMove.value = !e.event?.altKey && conns.canDelete.value;
+  dragRows.value = rows;
+  dragTarget.value = { name: over.name, prefix: over.prefix };
+  transferError.value = null;
+  transferProgress.value = null;
+  dragModalOpen.value = true;
+}
+
+async function confirmDragTransfer() {
+  if (!dragTarget.value) return;
+  const ok = await executeTransfer(
+    dragRows.value,
+    props.bucket,
+    dragTarget.value.prefix,
+    dragIsMove.value,
+  );
+  if (ok) dragModalOpen.value = false;
+}
+
+// Highlight the folder row currently under the drag by toggling a CSS class on
+// its ag-grid row element (getRowClass can't react per-mousemove).
+let highlightedRowId: string | null = null;
+function setDragHighlight(rowId: string | null) {
+  if (rowId === highlightedRowId) return;
+  const root = gridWrap.value;
+  const sel = (id: string) => `.ag-row[row-id="${CSS.escape(id)}"]`;
+  if (highlightedRowId)
+    root?.querySelector(sel(highlightedRowId))?.classList.remove("drag-over-folder");
+  if (rowId) root?.querySelector(sel(rowId))?.classList.add("drag-over-folder");
+  highlightedRowId = rowId;
+}
+
 // --- Uploads -------------------------------------------------------------
 
 const uploading = ref(false);
@@ -201,6 +403,8 @@ const UPLOAD_CONCURRENCY = 5;
 // Above this many files we skip the per-file existence check (which is one HEAD
 // each) and show a single generic overwrite warning instead.
 const OVERWRITE_CHECK_LIMIT = 100;
+// Cap on concurrent existence probes (HEADs) when checking for overwrites.
+const OVERWRITE_PROBE_CONCURRENCY = 8;
 
 /**
  * Open the native picker and upload the selection. A single native dialog can't
@@ -230,7 +434,14 @@ async function uploadFiles(paths: string[]) {
     }));
     if (files.length === 0) return;
 
-    if (!(await confirmOverwrite(files))) return;
+    if (
+      !(await confirmOverwrite(
+        props.bucket,
+        files.map((f) => ({ key: f.key, label: f.relKey })),
+        "Upload",
+      ))
+    )
+      return;
 
     // Concurrency-capped upload; `uploads.start` resolves per file (never throws).
     await runWithLimit(files, UPLOAD_CONCURRENCY, (f) =>
@@ -243,28 +454,42 @@ async function uploadFiles(paths: string[]) {
   }
 }
 
-/** Confirm overwriting existing keys. Returns false only if the user cancels. */
+/**
+ * Confirm overwriting existing keys at `bucket`. Returns false only if the user
+ * cancels. Each file carries the `key` to probe and a `label` shown per
+ * collision; `verb` seeds the warning copy ("Upload" / "Transfer"). Shared by
+ * the upload and copy/move paths.
+ */
 async function confirmOverwrite(
-  files: { key: string; relKey: string }[],
+  bucket: string,
+  files: { key: string; label: string }[],
+  verb: string,
 ): Promise<boolean> {
+  if (files.length === 0) return true;
   // Big batches (whole folders): one generic warning, no HEAD-per-file storm.
   if (files.length > OVERWRITE_CHECK_LIMIT) {
     return confirm(
-      `Upload ${files.length} files here? Any existing files with the same names will be overwritten.`,
+      `${verb} ${files.length} files here? Any existing files with the same names will be overwritten.`,
     );
   }
 
-  const existing = await Promise.all(
-    files.map((f) => s3.objectExists(props.bucket, f.key).catch(() => false)),
+  // Probe existence with bounded concurrency rather than one HEAD per file at once.
+  const existing = new Array<boolean>(files.length);
+  await runWithLimit(
+    files.map((f, i) => ({ f, i })),
+    OVERWRITE_PROBE_CONCURRENCY,
+    async ({ f, i }) => {
+      existing[i] = await s3.objectExists(bucket, f.key).catch(() => false);
+    },
   );
-  const collisions = files.filter((_, i) => existing[i]).map((f) => f.relKey);
+  const collisions = files.filter((_, i) => existing[i]).map((f) => f.label);
   if (collisions.length === 0) return true;
 
   const list = collisions.slice(0, 10).join("\n");
   const more =
     collisions.length > 10 ? `\n…and ${collisions.length - 10} more` : "";
   return confirm(
-    `${collisions.length} file(s) already exist here and will be overwritten:\n\n${list}${more}\n\nContinue?`,
+    `${collisions.length} file(s) already exist and will be overwritten:\n\n${list}${more}\n\nContinue?`,
   );
 }
 
@@ -364,6 +589,8 @@ const columnDefs = computed<ColDef<Row>[]>(() => {
       field: "name",
       flex: 2,
       minWidth: 220,
+      // Drag handle on write-capable connections; delete markers aren't copyable.
+      rowDrag: (p) => conns.canWrite.value && !p.data?.object?.isDeleteMarker,
       valueGetter: (p) => {
         const d = p.data;
         if (!d) return "";
@@ -407,11 +634,12 @@ const defaultColDef = computed<ColDef>(() => ({
   resizable: true,
 }));
 
-// Selection mode: checkbox multi-select on a delete-capable connection (drives
-// the bulk-delete flow), otherwise plain single-row. Either way, row-body clicks
-// still navigate / open detail via `onRowClicked` (selection is checkbox-only).
+// Selection mode: checkbox multi-select on any write-capable connection (drives
+// the bulk copy/move/delete flows), otherwise plain single-row. Either way,
+// row-body clicks still navigate / open detail via `onRowClicked` (selection is
+// checkbox-only).
 const rowSelection = computed<RowSelectionOptions<Row>>(() =>
-  conns.canDelete.value
+  conns.canWrite.value
     ? {
         mode: "multiRow",
         checkboxes: true,
@@ -422,6 +650,7 @@ const rowSelection = computed<RowSelectionOptions<Row>>(() =>
 );
 
 let gridApi: GridApi<Row> | undefined;
+const gridWrap = ref<HTMLElement | null>(null);
 function onGridReady(e: GridReadyEvent<Row>) {
   gridApi = e.api;
 }
@@ -576,6 +805,22 @@ watch(
         </div>
 
         <div class="ml-auto flex shrink-0 items-center gap-2">
+          <button
+            v-if="conns.canWrite.value && selectedRows.length"
+            class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
+            title="Copy the selected objects to another location"
+            @click="openTransfer('copy')"
+          >
+            📋 Copy ({{ selectedRows.length }})
+          </button>
+          <button
+            v-if="conns.canDelete.value && selectedRows.length"
+            class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
+            title="Move the selected objects to another location"
+            @click="openTransfer('move')"
+          >
+            ✂ Move ({{ selectedRows.length }})
+          </button>
           <button
             v-if="conns.canDelete.value && selectedRows.length"
             class="rounded border border-rose-300 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
@@ -777,7 +1022,7 @@ watch(
       </div>
 
       <!-- Grid -->
-      <div v-else class="min-h-0 flex-1 p-2">
+      <div v-else ref="gridWrap" class="min-h-0 flex-1 p-2">
         <AgGridVue
           class="h-full w-full"
           :theme="theme"
@@ -790,9 +1035,13 @@ watch(
           :getRowId="getRowId"
           :getRowClass="getRowClass"
           :rowSelection="rowSelection"
+          :rowDragMultiRow="true"
           @grid-ready="onGridReady"
           @row-clicked="onRowClicked"
           @selection-changed="onSelectionChanged"
+          @row-drag-move="onRowDragMove"
+          @row-drag-leave="onRowDragLeave"
+          @row-drag-end="onRowDragEnd"
         />
       </div>
 
@@ -830,6 +1079,33 @@ watch(
       danger
       @confirm="confirmDelete"
       @cancel="deleteModalOpen = false"
+    />
+
+    <DestinationPicker
+      :open="pickerOpen"
+      :mode="pickerMode"
+      :item-count="selectedRows.length"
+      :source-bucket="bucket"
+      :source-prefix="prefix"
+      :source-folder-prefixes="sourceFolderPrefixes"
+      :busy="transferBusy"
+      :progress-text="transferProgress"
+      :error="transferError"
+      @confirm="onDestinationConfirm"
+      @cancel="cancelTransfer"
+    />
+
+    <!-- Drag-and-drop (row → folder) confirmation -->
+    <ConfirmModal
+      :open="dragModalOpen"
+      :title="dragTitle"
+      :items="dragItems"
+      :busy="transferBusy"
+      :progress-text="transferProgress"
+      :error="transferError"
+      :confirm-label="dragIsMove ? 'Move' : 'Copy'"
+      @confirm="confirmDragTransfer"
+      @cancel="dragModalOpen = false"
     />
   </div>
 </template>

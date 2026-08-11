@@ -46,6 +46,9 @@ pub enum AppError {
     #[error("delete failed: {0}")]
     Delete(String),
 
+    #[error("copy failed: {0}")]
+    Copy(String),
+
     #[error("{0}")]
     Other(String),
 }
@@ -65,6 +68,7 @@ impl AppError {
             AppError::Upload(_) => "upload",
             AppError::DeleteNotAllowed => "delete_not_allowed",
             AppError::Delete(_) => "delete",
+            AppError::Copy(_) => "copy",
             AppError::Other(_) => "other",
         }
     }

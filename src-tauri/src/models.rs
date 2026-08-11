@@ -136,6 +136,18 @@ pub struct DeleteProgress {
     pub error: Option<String>,
 }
 
+/// Progress event streamed to the frontend during a copy or move (a move copies
+/// every object first, then deletes the sources).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyProgress {
+    /// Running count of objects copied so far.
+    pub copied: u64,
+    pub done: bool,
+    /// Set on the terminal event if the copy/move failed.
+    pub error: Option<String>,
+}
+
 /// Aggregate size + object count for a whole bucket, computed by fully paginating its keys.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

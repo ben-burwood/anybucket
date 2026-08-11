@@ -39,6 +39,12 @@ html.dark {
   opacity: 0.6;
 }
 
+/* Folder row highlighted as the drop target while a row is dragged over it. */
+.drag-over-folder {
+  background-color: rgba(5, 150, 105, 0.14) !important;
+  box-shadow: inset 0 0 0 2px #059669;
+}
+
 /* Scrollable but with the scrollbar hidden (used for URI/URL boxes). */
 .no-scrollbar {
   scrollbar-width: none; /* Firefox */
