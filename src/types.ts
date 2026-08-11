@@ -117,6 +117,13 @@ export interface DeleteProgress {
   error: string | null;
 }
 
+/** Progress event streamed during a copy or move (recursive for folders). */
+export interface CopyProgress {
+  copied: number;
+  done: boolean;
+  error: string | null;
+}
+
 /** Shape of the error object serialized by the Rust `AppError`. */
 export interface AppError {
   kind: string;

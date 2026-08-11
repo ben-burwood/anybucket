@@ -58,6 +58,7 @@ dependencies = [
  "aws-smithy-types",
  "futures-util",
  "keyring",
+ "percent-encoding",
  "serde",
  "serde_json",
  "tauri",

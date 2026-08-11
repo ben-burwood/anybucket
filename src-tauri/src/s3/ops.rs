@@ -3,6 +3,7 @@ use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, Delete, ObjectIdentifier};
 use aws_sdk_s3::Client;
 use aws_smithy_types::date_time::Format;
+use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 
 use crate::error::{AppError, AppResult};
 use crate::models::{Bucket, Folder, Listing, ListParams, ObjectItem, ObjectMeta};
@@ -490,6 +491,103 @@ where
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Copies (server-side)
+// ---------------------------------------------------------------------------
+
+/// Characters left literal in an S3 copy-source path. We keep the RFC 3986
+/// unreserved set (`A-Z a-z 0-9 - _ . ~`) plus `/` (key separators) and
+/// percent-encode everything else, so keys with spaces, `+`, `#`, unicode, etc.
+/// don't corrupt the `x-amz-copy-source` header.
+const COPY_SOURCE_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~')
+    .remove(b'/');
+
+/// Build the `x-amz-copy-source` value (`bucket/key`, key percent-encoded),
+/// optionally pinned to a specific `?versionId=`.
+fn encode_copy_source(src_bucket: &str, src_key: &str, version_id: Option<&str>) -> String {
+    let path = format!("{src_bucket}/{src_key}");
+    let encoded = utf8_percent_encode(&path, COPY_SOURCE_ENCODE).to_string();
+    match version_id {
+        Some(v) if !v.is_empty() => format!("{encoded}?versionId={v}"),
+        _ => encoded,
+    }
+}
+
+/// Server-side copy of one object (`CopyObject`), optionally a specific version.
+/// The default `MetadataDirective` (COPY) carries the content-type and user
+/// metadata across. Bytes never travel through the app.
+///
+/// Note: a single `CopyObject` supports objects up to 5 GiB; larger objects need
+/// multipart `UploadPartCopy` (not implemented). The provider error is surfaced.
+pub async fn copy_object(
+    client: &Client,
+    src_bucket: &str,
+    src_key: &str,
+    src_version_id: Option<&str>,
+    dst_bucket: &str,
+    dst_key: &str,
+) -> AppResult<()> {
+    client
+        .copy_object()
+        .copy_source(encode_copy_source(src_bucket, src_key, src_version_id))
+        .bucket(dst_bucket)
+        .key(dst_key)
+        .send()
+        .await?;
+    Ok(())
+}
+
+/// Recursively copy every object under `src_prefix` to `dst_prefix` (in
+/// `dst_bucket`), paging the listing without a delimiter so all subfolders are
+/// included — mirrors [`delete_prefix`]. `on_object` is called once per copied
+/// object so the caller can surface running progress.
+///
+/// Callers must ensure `dst_prefix` is not `src_prefix` or a descendant of it
+/// (within the same bucket), or this would copy into its own output forever.
+pub async fn copy_prefix<F>(
+    client: &Client,
+    src_bucket: &str,
+    src_prefix: &str,
+    dst_bucket: &str,
+    dst_prefix: &str,
+    mut on_object: F,
+) -> AppResult<()>
+where
+    F: FnMut(u64),
+{
+    let mut token: Option<String> = None;
+    loop {
+        let mut req = client
+            .list_objects_v2()
+            .bucket(src_bucket)
+            .prefix(src_prefix)
+            .max_keys(DEFAULT_MAX_KEYS);
+        if let Some(t) = &token {
+            req = req.continuation_token(t);
+        }
+        let out = req.send().await?;
+
+        for obj in out.contents() {
+            let Some(key) = obj.key() else { continue };
+            // `src_prefix + rest` → `dst_prefix + rest`, preserving structure.
+            let rest = key.strip_prefix(src_prefix).unwrap_or(key);
+            let dst_key = format!("{dst_prefix}{rest}");
+            copy_object(client, src_bucket, key, None, dst_bucket, &dst_key).await?;
+            on_object(1);
+        }
+
+        match out.next_continuation_token() {
+            Some(t) => token = Some(t.to_string()),
+            None => break,
+        }
+    }
+    Ok(())
+}
+
 /// Coarse content-type guess from a key's extension; `None` lets S3 default to
 /// `application/octet-stream`.
 pub fn guess_content_type(key: &str) -> Option<&'static str> {
@@ -536,4 +634,43 @@ fn strip_prefix(key: &str, prefix: &str) -> String {
 /// ETags come quoted from the API; strip the surrounding quotes for display.
 fn clean_etag(etag: &str) -> String {
     etag.trim_matches('"').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::encode_copy_source;
+
+    #[test]
+    fn copy_source_keeps_slashes_and_unreserved() {
+        assert_eq!(
+            encode_copy_source("my-bucket", "logs/2026/app.log", None),
+            "my-bucket/logs/2026/app.log"
+        );
+    }
+
+    #[test]
+    fn copy_source_encodes_spaces_and_specials() {
+        assert_eq!(
+            encode_copy_source("b", "a b+c#d.txt", None),
+            "b/a%20b%2Bc%23d.txt"
+        );
+    }
+
+    #[test]
+    fn copy_source_encodes_unicode() {
+        assert_eq!(
+            encode_copy_source("b", "café/☕.txt", None),
+            "b/caf%C3%A9/%E2%98%95.txt"
+        );
+    }
+
+    #[test]
+    fn copy_source_appends_version_id() {
+        assert_eq!(
+            encode_copy_source("b", "k.txt", Some("v1")),
+            "b/k.txt?versionId=v1"
+        );
+        // Empty version id is treated as no version.
+        assert_eq!(encode_copy_source("b", "k.txt", Some("")), "b/k.txt");
+    }
 }

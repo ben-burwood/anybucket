@@ -33,6 +33,7 @@ import { fileType, formatDate, formatSize } from "../utils/format";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
 import ConfirmModal from "./ConfirmModal.vue";
+import DestinationPicker from "./DestinationPicker.vue";
 
 const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
@@ -184,6 +185,118 @@ async function confirmDelete() {
     deleteError.value = errorMessage(e);
   } finally {
     deleting.value = false;
+  }
+}
+
+// --- Copy / Move ---------------------------------------------------------
+
+// The destination picker drives its own `busy`/progress/error while the
+// transfer runs; it closes only on success.
+const pickerOpen = ref(false);
+const pickerMode = ref<"copy" | "move">("copy");
+const transferBusy = ref(false);
+const transferProgress = ref<string | null>(null);
+const transferError = ref<string | null>(null);
+
+// Full prefixes of any selected folders — the picker greys these out (a folder
+// can't be moved into itself or a descendant).
+const sourceFolderPrefixes = computed(() =>
+  selectedRows.value
+    .filter((r) => r.kind === "folder" && r.prefix != null)
+    .map((r) => r.prefix!),
+);
+
+function openTransfer(mode: "copy" | "move") {
+  if (!conns.canWrite.value || !selectedRows.value.length) return;
+  if (mode === "move" && !conns.canDelete.value) return;
+  pickerMode.value = mode;
+  transferError.value = null;
+  transferProgress.value = null;
+  pickerOpen.value = true;
+}
+
+function cancelTransfer() {
+  if (transferBusy.value) return;
+  pickerOpen.value = false;
+}
+
+/** Confirm overwriting existing keys at `bucket`. Returns false only on cancel. */
+async function confirmDestOverwrite(
+  bucket: string,
+  files: { dstKey: string; name: string }[],
+): Promise<boolean> {
+  if (files.length === 0) return true;
+  if (files.length > OVERWRITE_CHECK_LIMIT) {
+    return confirm(
+      `Transfer ${files.length} files here? Any existing files with the same names at the destination will be overwritten.`,
+    );
+  }
+  const existing = await Promise.all(
+    files.map((f) => s3.objectExists(bucket, f.dstKey).catch(() => false)),
+  );
+  const collisions = files.filter((_, i) => existing[i]).map((f) => f.name);
+  if (collisions.length === 0) return true;
+
+  const list = collisions.slice(0, 10).join("\n");
+  const more =
+    collisions.length > 10 ? `\n…and ${collisions.length - 10} more` : "";
+  return confirm(
+    `${collisions.length} file(s) already exist at the destination and will be overwritten:\n\n${list}${more}\n\nContinue?`,
+  );
+}
+
+/** Copy or move the selection to the chosen destination, then refresh. */
+async function onDestinationConfirm(dest: { bucket: string; prefix: string }) {
+  const isMove = pickerMode.value === "move";
+  const fileRows = selectedRows.value.filter((r) => r.object);
+  const objects = fileRows.map((r) => ({
+    key: r.object!.key,
+    versionId: r.object!.versionId,
+    dstKey: `${dest.prefix}${r.name}`,
+  }));
+  const prefixes = selectedRows.value
+    .filter((r) => r.kind === "folder" && r.prefix != null)
+    .map((r) => ({
+      srcPrefix: r.prefix!,
+      dstPrefix: `${dest.prefix}${r.name}/`,
+    }));
+  if (!objects.length && !prefixes.length) return;
+
+  // Warn before overwriting existing files at the destination (files only).
+  const overwriteOk = await confirmDestOverwrite(
+    dest.bucket,
+    objects.map((o, i) => ({ dstKey: o.dstKey, name: fileRows[i].name })),
+  );
+  if (!overwriteOk) return;
+
+  transferBusy.value = true;
+  transferError.value = null;
+  transferProgress.value = isMove ? "Moving…" : "Copying…";
+  try {
+    await s3.transferObjects(
+      props.bucket,
+      dest.bucket,
+      objects,
+      prefixes,
+      isMove,
+      (p) => {
+        transferProgress.value = p.done
+          ? "Finishing…"
+          : `${isMove ? "Moved" : "Copied"} ${p.copied.toLocaleString()}…`;
+      },
+    );
+    pickerOpen.value = false;
+    gridApi?.deselectAll();
+    selectedRows.value = [];
+    await refreshAfterMutation();
+    // Cross-bucket transfers changed the destination bucket too.
+    if (dest.bucket !== props.bucket) {
+      metricsCache.invalidate(conns.state.active?.id, dest.bucket);
+    }
+  } catch (e) {
+    transferError.value = errorMessage(e);
+  } finally {
+    transferBusy.value = false;
   }
 }
 
@@ -407,11 +520,12 @@ const defaultColDef = computed<ColDef>(() => ({
   resizable: true,
 }));
 
-// Selection mode: checkbox multi-select on a delete-capable connection (drives
-// the bulk-delete flow), otherwise plain single-row. Either way, row-body clicks
-// still navigate / open detail via `onRowClicked` (selection is checkbox-only).
+// Selection mode: checkbox multi-select on any write-capable connection (drives
+// the bulk copy/move/delete flows), otherwise plain single-row. Either way,
+// row-body clicks still navigate / open detail via `onRowClicked` (selection is
+// checkbox-only).
 const rowSelection = computed<RowSelectionOptions<Row>>(() =>
-  conns.canDelete.value
+  conns.canWrite.value
     ? {
         mode: "multiRow",
         checkboxes: true,
@@ -576,6 +690,22 @@ watch(
         </div>
 
         <div class="ml-auto flex shrink-0 items-center gap-2">
+          <button
+            v-if="conns.canWrite.value && selectedRows.length"
+            class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
+            title="Copy the selected objects to another location"
+            @click="openTransfer('copy')"
+          >
+            📋 Copy ({{ selectedRows.length }})
+          </button>
+          <button
+            v-if="conns.canDelete.value && selectedRows.length"
+            class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
+            title="Move the selected objects to another location"
+            @click="openTransfer('move')"
+          >
+            ✂ Move ({{ selectedRows.length }})
+          </button>
           <button
             v-if="conns.canDelete.value && selectedRows.length"
             class="rounded border border-rose-300 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
@@ -830,6 +960,20 @@ watch(
       danger
       @confirm="confirmDelete"
       @cancel="deleteModalOpen = false"
+    />
+
+    <DestinationPicker
+      :open="pickerOpen"
+      :mode="pickerMode"
+      :item-count="selectedRows.length"
+      :source-bucket="bucket"
+      :source-prefix="prefix"
+      :source-folder-prefixes="sourceFolderPrefixes"
+      :busy="transferBusy"
+      :progress-text="transferProgress"
+      :error="transferError"
+      @confirm="onDestinationConfirm"
+      @cancel="cancelTransfer"
     />
   </div>
 </template>
