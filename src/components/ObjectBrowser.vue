@@ -89,6 +89,11 @@ async function refreshAfterMutation() {
   metricsCache.invalidate(conns.state.active?.id, props.bucket);
 }
 
+async function onObjectRenamed() {
+  selected.value = null;
+  await refreshAfterMutation();
+}
+
 // --- New folder ----------------------------------------------------------
 
 // Inline "new folder" form (read-write only): a small popover with a name input.
@@ -1066,6 +1071,7 @@ watch(
       :bucket="bucket"
       :object="selected"
       @close="selected = null"
+      @renamed="onObjectRenamed"
     />
 
     <ConfirmModal
