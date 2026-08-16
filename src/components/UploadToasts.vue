@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { useUploads } from "../store/useUploads";
 import { formatSize } from "../utils/format";
+import ProgressBar from "./ProgressBar.vue";
 import ToastCountdown from "./ToastCountdown.vue";
 import type { UploadTask } from "../store/useUploads";
 
@@ -41,13 +42,7 @@ const tasks = computed(() => uploads.state.tasks);
 
       <!-- Progress -->
       <div class="mt-2">
-        <div class="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-night-700">
-          <div
-            class="h-full transition-all"
-            :class="t.error ? 'bg-rose-500' : t.done ? 'bg-emerald-600' : 'bg-emerald-400'"
-            :style="{ width: `${percent(t) ?? (t.done ? 100 : 40)}%` }"
-          />
-        </div>
+        <ProgressBar :percent="percent(t)" :error="t.error" :done="t.done" />
         <p class="mt-1 text-xs text-slate-500">
           <span v-if="t.error" class="text-rose-600 dark:text-rose-400">{{
             t.error
