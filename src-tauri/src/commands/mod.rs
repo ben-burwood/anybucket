@@ -13,6 +13,7 @@ use crate::models::{
     Bucket, BucketMetrics, CopyProgress, DeleteProgress, DownloadProgress, Listing, ListParams,
     ObjectMeta, ScanProgress, UploadEntry, UploadProgress,
 };
+use crate::s3::progress_body::UploadReporter;
 use crate::s3::{self, metrics, ops};
 use crate::state::AppState;
 
@@ -365,10 +366,12 @@ pub async fn upload_object(
     let total = meta.len();
     let content_type = ops::guess_content_type(&key);
 
+    let reporter = UploadReporter::new(total, key.clone(), on_progress.clone(), PROGRESS_STEP);
+
     let result = if total <= MULTIPART_THRESHOLD {
-        upload_single(&client, &bucket, &key, &src_path, content_type).await
+        upload_single(&client, &bucket, &key, &src_path, content_type, &reporter).await
     } else {
-        upload_multipart(&client, &bucket, &key, &src_path, content_type, total, &on_progress).await
+        upload_multipart(&client, &bucket, &key, &src_path, content_type, &reporter).await
     };
 
     // Terminal event so the UI can settle its progress line either way.
@@ -386,19 +389,19 @@ pub async fn upload_object(
     result
 }
 
-/// PUT the file in one request, streamed from disk by the SDK (no whole-file
-/// buffering in memory).
+/// PUT the file in one request, streamed from disk by the SDK (no whole-file buffering in memory).
 async fn upload_single(
     client: &aws_sdk_s3::Client,
     bucket: &str,
     key: &str,
     src_path: &str,
     content_type: Option<&str>,
+    reporter: &UploadReporter,
 ) -> AppResult<()> {
-    let body = ByteStream::from_path(src_path)
+    let file = ByteStream::from_path(src_path)
         .await
         .map_err(|e| AppError::Upload(e.to_string()))?;
-    ops::put_object(client, bucket, key, body, content_type).await
+    ops::put_object(client, bucket, key, reporter.wrap(file), content_type).await
 }
 
 /// Stream the file to S3 in `PART_SIZE` parts, emitting throttled progress and
@@ -409,14 +412,11 @@ async fn upload_multipart(
     key: &str,
     src_path: &str,
     content_type: Option<&str>,
-    total: u64,
-    on_progress: &Channel<UploadProgress>,
+    reporter: &UploadReporter,
 ) -> AppResult<()> {
     let upload_id = ops::create_multipart_upload(client, bucket, key, content_type).await?;
 
-    let parts = match stream_parts(client, bucket, key, &upload_id, src_path, total, on_progress)
-        .await
-    {
+    let parts = match stream_parts(client, bucket, key, &upload_id, src_path, reporter).await {
         Ok(parts) => parts,
         Err(e) => {
             let _ = ops::abort_multipart_upload(client, bucket, key, &upload_id).await;
@@ -431,26 +431,24 @@ async fn upload_multipart(
     Ok(())
 }
 
-/// Upload each part as a byte range streamed straight from disk by the SDK,
-/// returning the completed parts. Emits throttled progress between parts.
+/// Upload each part as a byte range streamed straight from disk by the SDK, returning the completed parts.
+/// Each part's body is wrapped by `reporter` so bytes are counted as they're sent, giving continual byte-level progress.
 async fn stream_parts(
     client: &aws_sdk_s3::Client,
     bucket: &str,
     key: &str,
     upload_id: &str,
     src_path: &str,
-    total: u64,
-    on_progress: &Channel<UploadProgress>,
+    reporter: &UploadReporter,
 ) -> AppResult<Vec<CompletedPart>> {
+    let total = reporter.total();
     let part_count = total.div_ceil(PART_SIZE);
     let mut parts: Vec<CompletedPart> = Vec::with_capacity(part_count as usize);
-    let mut uploaded: u64 = 0;
-    let mut last_emitted: u64 = 0;
 
     for i in 0..part_count {
         let offset = i * PART_SIZE;
         let len = PART_SIZE.min(total - offset); // the last part is short
-        let body = ByteStream::read_from()
+        let file = ByteStream::read_from()
             .path(src_path)
             .offset(offset)
             .length(Length::Exact(len))
@@ -459,20 +457,9 @@ async fn stream_parts(
             .map_err(|e| AppError::Upload(e.to_string()))?;
 
         let completed =
-            ops::upload_part(client, bucket, key, upload_id, (i + 1) as i32, body).await?;
+            ops::upload_part(client, bucket, key, upload_id, (i + 1) as i32, reporter.wrap(file))
+                .await?;
         parts.push(completed);
-        uploaded += len;
-
-        if uploaded - last_emitted >= PROGRESS_STEP {
-            last_emitted = uploaded;
-            let _ = on_progress.send(UploadProgress {
-                key: key.to_string(),
-                uploaded,
-                total,
-                done: false,
-                error: None,
-            });
-        }
     }
 
     Ok(parts)

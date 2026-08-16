@@ -1,6 +1,6 @@
 [package]
 name = "anybucket"
-version = "0.4.0"
+version = "0.4.1"
 description = "Desktop explorer for S3-compatible object stores"
 authors = ["Ben Burwood"]
 license = "MIT"
@@ -24,12 +24,15 @@ tauri-plugin-clipboard-manager = "2"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
 aws-credential-types = "1"
-aws-smithy-types = "1"
+aws-smithy-types = { version = "1", features = ["http-body-1-x"] }
 aws-smithy-runtime-api = "1"
 
 # Async + streaming
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync"] }
 futures-util = "0.3"
+http-body = "1"
+bytes = "1"
+pin-project-lite = "0.2"
 
 # Secrets + persistence + models
 keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }

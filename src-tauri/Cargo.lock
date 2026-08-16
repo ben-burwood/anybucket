@@ -49,16 +49,19 @@ dependencies = [
 
 [[package]]
 name = "anybucket"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "aws-config",
  "aws-credential-types",
  "aws-sdk-s3",
  "aws-smithy-runtime-api",
  "aws-smithy-types",
+ "bytes",
  "futures-util",
+ "http-body 1.1.0",
  "keyring",
  "percent-encoding",
+ "pin-project-lite",
  "serde",
  "serde_json",
  "tauri",

@@ -1,5 +1,6 @@
 pub mod metrics;
 pub mod ops;
+pub mod progress_body;
 
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::{Credentials, Region};
