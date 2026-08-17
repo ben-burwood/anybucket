@@ -1,0 +1,35 @@
+# Local S3 dev environment for AnyBucket, powered by Garage
+# Bring it up with ./setup.sh (which also creates keys, buckets and seed data).
+#   docker compose up -d garage     # just the server
+#   docker compose down             # stop (keeps data volumes)
+#   docker compose down -v          # stop and wipe all data
+services:
+  garage:
+    container_name: anybucket-garage
+    image: dxflrs/garage
+    restart: unless-stopped
+    ports:
+      - "3900:3900"   # S3 API
+      - "3903:3903"   # Admin API
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+
+  # One-shot tooling container (aws-cli) used by setup.sh to seed objects.
+  seed:
+    image: amazon/aws-cli
+    profiles: ["tools"]
+    depends_on:
+      - garage
+    environment:
+      AWS_ACCESS_KEY_ID: "GKdeadbeefdeadbeefdeadbeef"
+      AWS_SECRET_ACCESS_KEY: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+      AWS_DEFAULT_REGION: "garage"
+      AWS_EC2_METADATA_DISABLED: "true"
+    volumes:
+      - ./seed.sh:/seed.sh:ro
+
+volumes:
+  garage_meta:
+  garage_data:
