@@ -9,7 +9,7 @@ import ConnectionManager from "./components/ConnectionManager.vue";
 import ObjectBrowser from "./components/ObjectBrowser.vue";
 
 const routes: RouteRecordRaw[] = [
-  { path: "/", name: "buckets", component: BucketList },
+  { path: "/", name: "buckets", component: BucketList, meta: { sidebar: false } },
   { path: "/connections", name: "connections", component: ConnectionManager },
   {
     // prefix is the object-store path within the bucket; kept as a query param

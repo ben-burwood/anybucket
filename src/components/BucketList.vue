@@ -1,33 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from "vue";
-import { useRouter } from "vue-router";
-import { useBuckets } from "../store/useBuckets";
-import { useConnections } from "../store/useConnections";
-import { type Bucket } from "../types";
+import { RouterLink } from "vue-router";
+import { useActiveBuckets } from "../composables/useActiveBuckets";
 import { formatDate } from "../utils/format";
 
-const router = useRouter();
-const conns = useConnections();
-const bucketCache = useBuckets();
-
-const activeId = computed(() => conns.state.active?.id);
-
-// Session cache: served instantly on revisit, revalidated in the background.
-const entry = computed(() => bucketCache.entryFor(activeId.value));
-const buckets = computed(() => entry.value.buckets);
-const loading = computed(() => entry.value.loading);
-const refreshing = computed(() => entry.value.refreshing);
-const error = computed(() => entry.value.error);
-const noConnection = computed(() => entry.value.noConnection);
-
-function open(bucket: Bucket) {
-  router.push({ name: "browse", params: { bucket: bucket.name } });
-}
-
-// Reload when the active connection changes (e.g. switched from the header).
-watch(activeId, (id) => bucketCache.ensure(id));
-
-onMounted(() => bucketCache.ensure(activeId.value));
+const { conns, buckets, loading, refreshing, error, noConnection, open, refresh } =
+  useActiveBuckets();
 </script>
 
 <template>
@@ -40,7 +17,7 @@ onMounted(() => bucketCache.ensure(activeId.value));
       <button
         class="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
         :disabled="loading || refreshing"
-        @click="bucketCache.refresh(activeId)"
+        @click="refresh()"
       >
         Refresh
       </button>

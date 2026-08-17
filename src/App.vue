@@ -16,8 +16,9 @@ const conns = useConnections();
 const sidebar = useSidebar();
 const route = useRoute();
 
+const sidebarAllowed = computed(() => route.meta.sidebar !== false);
 const showSidebar = computed(
-  () => !sidebar.state.collapsed && route.name !== "buckets",
+  () => sidebarAllowed.value && !sidebar.state.collapsed,
 );
 
 onMounted(() => conns.refresh());
@@ -41,7 +42,7 @@ function onTitlebarDblClick(e: MouseEvent) {
     >
       <div class="flex items-center gap-1">
         <button
-          v-if="route.name !== 'buckets'"
+          v-if="sidebarAllowed"
           type="button"
           title="Toggle bucket panel"
           class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-emerald-600 dark:text-slate-400 dark:hover:bg-night-800"

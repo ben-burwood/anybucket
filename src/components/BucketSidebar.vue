@@ -1,31 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from "vue";
-import { RouterLink, useRoute, useRouter } from "vue-router";
-import { useBuckets } from "../store/useBuckets";
-import { useConnections } from "../store/useConnections";
+import { computed, onBeforeUnmount } from "vue";
+import { RouterLink, useRoute } from "vue-router";
 import { useSidebar } from "../store/useSidebar";
-import { type Bucket } from "../types";
+import { useActiveBuckets } from "../composables/useActiveBuckets";
 
-const router = useRouter();
 const route = useRoute();
-const conns = useConnections();
-const bucketCache = useBuckets();
 const sidebar = useSidebar();
-
-const activeId = computed(() => conns.state.active?.id);
-
-const entry = computed(() => bucketCache.entryFor(activeId.value));
-const buckets = computed(() => entry.value.buckets);
-const loading = computed(() => entry.value.loading);
-const refreshing = computed(() => entry.value.refreshing);
-const error = computed(() => entry.value.error);
-const noConnection = computed(() => entry.value.noConnection);
+const { buckets, loading, refreshing, error, noConnection, open, refresh } =
+  useActiveBuckets();
 
 const currentBucket = computed(() => (route.params.bucket as string) ?? "");
 
-function open(bucket: Bucket) {
-  router.push({ name: "browse", params: { bucket: bucket.name } });
-}
+let endResize: (() => void) | null = null;
 
 function startResize(e: PointerEvent) {
   e.preventDefault();
@@ -34,21 +20,23 @@ function startResize(e: PointerEvent) {
   document.body.style.cursor = "ew-resize";
   document.body.style.userSelect = "none";
 
-  function onMove(ev: PointerEvent) {
+  const onMove = (ev: PointerEvent) =>
     sidebar.setWidth(startWidth + (ev.clientX - startX));
-  }
-  function onUp() {
+
+  endResize = () => {
     window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointerup", endResize!);
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
-  }
+    sidebar.persistWidth();
+    endResize = null;
+  };
+
   window.addEventListener("pointermove", onMove);
-  window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointerup", endResize);
 }
 
-watch(activeId, (id) => bucketCache.ensure(id));
-onMounted(() => bucketCache.ensure(activeId.value));
+onBeforeUnmount(() => endResize?.());
 </script>
 
 <template>
@@ -70,7 +58,7 @@ onMounted(() => bucketCache.ensure(activeId.value));
           title="Refresh buckets"
           class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-emerald-600 disabled:opacity-50 dark:hover:bg-night-800"
           :disabled="loading || refreshing"
-          @click="bucketCache.refresh(activeId)"
+          @click="refresh()"
         >
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
             <path

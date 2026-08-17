@@ -36,9 +36,12 @@ function toggle() {
 
 function setWidth(px: number) {
   state.width = clampWidth(px);
+}
+
+function persistWidth() {
   localStorage.setItem(WIDTH_KEY, String(state.width));
 }
 
 export function useSidebar() {
-  return { state, toggle, setCollapsed, setWidth };
+  return { state, toggle, setWidth, persistWidth };
 }
