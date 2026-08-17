@@ -1,0 +1,43 @@
+---
+import { REPO_URL, asset } from '../consts';
+---
+
+<header class="sticky top-0 z-50 border-b border-night-700/70 bg-night-950/80 backdrop-blur">
+  <nav class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5">
+    <a href="#top" class="flex items-center gap-2.5 font-semibold tracking-tight">
+      <img src={asset('/bucket.svg')} alt="" width="26" height="26" class="h-6 w-6" />
+      <span class="text-[1.05rem]">AnyBucket</span>
+    </a>
+
+    <div class="flex items-center gap-1 sm:gap-2">
+      <a
+        href="#features"
+        class="hidden rounded-md px-3 py-2 text-sm text-ink-muted transition hover:text-ink sm:block"
+        >Features</a
+      >
+      <a
+        href="#install"
+        class="hidden rounded-md px-3 py-2 text-sm text-ink-muted transition hover:text-ink sm:block"
+        >Install</a
+      >
+
+      <!-- Star on GitHub — star count injected client-side (see Scripts.astro) -->
+      <a
+        href={REPO_URL}
+        target="_blank"
+        rel="noopener"
+        class="group inline-flex items-center gap-2 rounded-md border border-night-700 bg-night-900 py-2 pl-3 pr-1 text-sm font-medium text-ink transition hover:border-night-600 hover:bg-night-800"
+      >
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+          <path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"></path>
+        </svg>
+        <span>Star</span>
+        <span
+          id="star-count"
+          class="min-w-[2.25rem] rounded-[5px] bg-night-800 px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-ink-muted transition group-hover:text-ink"
+          >★</span
+        >
+      </a>
+    </div>
+  </nav>
+</header>

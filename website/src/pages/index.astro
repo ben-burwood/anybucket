@@ -1,0 +1,145 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Nav from '../components/Nav.astro';
+import Hero from '../components/Hero.astro';
+import Screenshots from '../components/Screenshots.astro';
+import Features from '../components/Features.astro';
+import Install from '../components/Install.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<Layout>
+  <Nav />
+  <main>
+    <Hero />
+    <Screenshots />
+    <Features />
+    <Install />
+  </main>
+  <Footer />
+</Layout>
+
+<script>
+  import {
+    API_REPO,
+    API_LATEST_RELEASE,
+    LATEST_RELEASE_URL,
+    PLATFORMS,
+  } from '../consts';
+
+  function detectOS(): string | null {
+    const plat = (navigator as any).userAgentData?.platform || navigator.platform || '';
+    const hay = `${plat} ${navigator.userAgent}`.toLowerCase();
+    return PLATFORMS.find((p) => p.uaHints.some((h) => hay.includes(h)))?.id ?? null;
+  }
+
+  const os = detectOS();
+
+  if (os) {
+    const dlOs = document.getElementById('dl-os');
+    const name = PLATFORMS.find((p) => p.id === os)?.name;
+    if (dlOs && name) dlOs.textContent = name;
+
+    const card = document.querySelector(`.platform-card[data-platform="${os}"]`);
+    card?.querySelector('.recommended-badge')?.classList.remove('hidden');
+    card?.classList.add('!border-brand-500/60', 'ring-1', 'ring-brand-500/30');
+  }
+
+  // ---- Copy-to-clipboard buttons ----------------------------------------
+  document.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const text = btn.dataset.copy ?? '';
+      try {
+        await navigator.clipboard.writeText(text);
+        const original = btn.innerHTML;
+        btn.textContent = 'Copied';
+        btn.classList.add('text-brand-400');
+        setTimeout(() => {
+          btn.innerHTML = original;
+          btn.classList.remove('text-brand-400');
+        }, 1500);
+      } catch {
+        /* clipboard blocked — ignore */
+      }
+    });
+  });
+
+  // ---- Live GitHub data (star count + latest release) --------------------
+  // Session-cached so we don't refetch on in-page navigation
+  async function cachedJson(url: string, key: string): Promise<any | null> {
+    try {
+      const cached = sessionStorage.getItem(key);
+      if (cached) return JSON.parse(cached);
+    } catch {
+      /* ignore */
+    }
+    try {
+      const res = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
+      if (!res.ok) return null;
+      const data = await res.json();
+      try {
+        sessionStorage.setItem(key, JSON.stringify(data));
+      } catch {
+        /* storage full/blocked — ignore */
+      }
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  function formatStars(n: number): string {
+    if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+    return `${n}`;
+  }
+
+  // Star count
+  cachedJson(API_REPO, 'ab_repo').then((repo) => {
+    if (repo && typeof repo.stargazers_count === 'number') {
+      const el = document.getElementById('star-count');
+      if (el) el.textContent = formatStars(repo.stargazers_count);
+    }
+  });
+
+  // Latest release → version labels + direct download links per platform.
+  // Asset-filename knowledge lives in consts.PLATFORMS[].assetMatch (preference order).
+  function pickAsset(assets: any[], platformId: string): string | null {
+    const platform = PLATFORMS.find((p) => p.id === platformId);
+    if (!platform) return null;
+    const names = assets.map((a) => ({ url: a.browser_download_url as string, name: (a.name as string).toLowerCase() }));
+    for (const suffix of platform.assetMatch) {
+      const hit = names.find((a) => a.name.endsWith(suffix));
+      if (hit) return hit.url;
+    }
+    return null;
+  }
+
+  cachedJson(API_LATEST_RELEASE, 'ab_release').then((rel) => {
+    if (!rel) return;
+
+    // tag like "app-v0.4.1" → "0.4.1"
+    const version = String(rel.tag_name || '').replace(/^app-v/i, '').replace(/^v/i, '');
+    if (version) {
+      const heroV = document.getElementById('hero-version');
+      if (heroV) heroV.textContent = `v${version}`;
+      const installV = document.getElementById('install-version');
+      if (installV) installV.textContent = `version ${version}`;
+    }
+
+    const assets = Array.isArray(rel.assets) ? rel.assets : [];
+    document.querySelectorAll<HTMLAnchorElement>('.download-link').forEach((link) => {
+      const platform = link.dataset.download!;
+      const asset = pickAsset(assets, platform);
+      if (asset) {
+        link.href = asset;
+      } else {
+        link.href = LATEST_RELEASE_URL; // fallback to release page
+      }
+      // Personalise the primary CTA label for the detected OS
+      if (platform === os) {
+        const label = link.querySelector('.download-label');
+        if (label && version) label.textContent = `Download ${version}`;
+      }
+    });
+  });
+</script>

@@ -1,0 +1,54 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter/wght.css';
+
+/* Brand tokens mirrored from the AnyBucket app (tailwind.config.js + bucket.svg) */
+@theme {
+  --font-sans: 'Inter Variable', 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+
+  --color-brand-400: #22c55e;
+  --color-brand-500: #16a34a;
+  --color-brand-600: #15803d;
+  --color-brand-emerald: #059669;
+
+  /* Dark neutral palette (tuned to the ag-grid Quartz dark grid). */
+  --color-night-950: #1f1f1f;
+  --color-night-900: #2b2b2b;
+  --color-night-850: #303030;
+  --color-night-800: #363636;
+  --color-night-700: #414141;
+  --color-night-600: #565656;
+
+  --color-ink: #ededed;
+  --color-ink-muted: #a1a1a1;
+  --color-ink-faint: #6f6f6f;
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: var(--color-night-950);
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Respect users who prefer no motion */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-brand-500) 40%, transparent);
+}

@@ -1,0 +1,44 @@
+---
+import '../styles/global.css';
+import { asset } from '../consts';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = 'AnyBucket — Desktop explorer for S3-compatible object stores',
+  description = 'A fast, native desktop explorer for AWS S3 and any S3-compatible object store — RustFS, Garage, MinIO and more. Browse buckets, manage objects, upload and download with live progress.',
+} = Astro.props;
+
+const logo = asset('/bucket.svg');
+const social = new URL(logo, Astro.site ?? 'https://ben-burwood.github.io');
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="icon" type="image/svg+xml" href={logo} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#16a34a" />
+
+    <!-- Open Graph / social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={social.href} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={social.href} />
+  </head>
+  <body class="bg-night-950 text-ink">
+    <slot />
+  </body>
+</html>

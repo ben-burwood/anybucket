@@ -1,0 +1,27 @@
+---
+import { REPO_URL, RELEASES_URL, LICENSE_URL, asset } from '../consts';
+const year = new Date().getFullYear();
+---
+
+<footer class="border-t border-night-800 bg-night-950">
+  <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-10 sm:flex-row">
+    <div class="flex items-center gap-2.5">
+      <img src={asset('/bucket.svg')} alt="" width="22" height="22" class="h-5 w-5" />
+      <span class="text-sm font-semibold">AnyBucket</span>
+      <span class="text-sm text-ink-faint">· Explorer for S3-compatible object stores</span>
+    </div>
+
+    <div class="flex items-center gap-5 text-sm text-ink-muted">
+      <a href={REPO_URL} target="_blank" rel="noopener" class="transition hover:text-ink">GitHub</a>
+      <a href={RELEASES_URL} target="_blank" rel="noopener" class="transition hover:text-ink">Releases</a>
+      <a href={LICENSE_URL} target="_blank" rel="noopener" class="transition hover:text-ink">MIT License</a>
+    </div>
+  </div>
+
+  <div class="border-t border-night-800/70">
+    <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-5 py-4 text-xs text-ink-faint sm:flex-row">
+      <span>© {year} Ben Burwood · Released under the MIT License</span>
+      <span>Built with Tauri + Vue</span>
+    </div>
+  </div>
+</footer>

@@ -1,0 +1,130 @@
+---
+import { asset } from '../consts';
+
+const buckets = [
+  { name: 'prod-assets', active: true },
+  { name: 'user-uploads', active: false },
+  { name: 'db-backups', active: false },
+  { name: 'static-site', active: false },
+  { name: 'logs-archive', active: false },
+];
+
+const rows = [
+  { icon: 'folder', name: 'images/', size: '—', modified: '—', klass: 'STANDARD', muted: true },
+  { icon: 'folder', name: 'fonts/', size: '—', modified: '—', klass: 'STANDARD', muted: true },
+  { icon: 'file', name: 'app-v0.4.1-setup.exe', size: '8.7 MB', modified: '2 hours ago', klass: 'STANDARD', selected: true },
+  { icon: 'file', name: 'release-notes.md', size: '4.1 KB', modified: 'Yesterday', klass: 'STANDARD' },
+  { icon: 'file', name: 'archive-2025.tar.zst', size: '1.3 GB', modified: 'Mar 4', klass: 'GLACIER' },
+  { icon: 'file', name: 'logo.svg', size: '2.0 KB', modified: 'Mar 1', klass: 'STANDARD' },
+  { icon: 'file', name: 'data-export.csv', size: '214 MB', modified: 'Feb 27', klass: 'STANDARD_IA' },
+];
+---
+
+<div
+  class="mx-auto max-w-5xl overflow-hidden rounded-xl border border-night-700 bg-night-900 shadow-2xl shadow-black/50 ring-1 ring-white/5"
+>
+  <!-- Title bar (frameless custom chrome) -->
+  <div class="flex items-center justify-between border-b border-night-700 bg-night-900 px-4 py-2.5">
+    <div class="flex items-center gap-2.5">
+      <img src={asset('/bucket.svg')} alt="" width="16" height="16" class="h-4 w-4" />
+      <span class="text-xs font-medium text-ink-muted">AnyBucket</span>
+    </div>
+    <div class="flex items-center gap-2 text-ink-faint">
+      <span class="h-3 w-3 rounded-sm border border-night-600"></span>
+      <span class="h-3 w-3 rounded-sm border border-night-600"></span>
+      <span class="h-3 w-3 rounded-sm border border-night-600"></span>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-[190px_1fr] max-sm:grid-cols-1">
+    <!-- Sidebar -->
+    <aside class="border-r border-night-700 bg-night-950/40 p-3 max-sm:hidden">
+      <div class="rounded-lg border border-night-700 bg-night-900 p-2.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold">Production</span>
+          <span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-bold text-rose-400">RWD</span>
+        </div>
+        <div class="mt-1 truncate text-[10px] text-ink-faint">s3.eu-west-1.amazonaws.com</div>
+      </div>
+
+      <div class="mt-4 px-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Buckets</div>
+      <ul class="mt-1.5 space-y-0.5">
+        {buckets.map((b) => (
+          <li>
+            <span
+              class:list={[
+                'flex items-center gap-2 rounded-md px-2 py-1.5 text-xs',
+                b.active ? 'bg-brand-500/15 font-medium text-brand-400' : 'text-ink-muted',
+              ]}
+            >
+              <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true" class="shrink-0">
+                <path d="M4 2.5c-.5 0-.9.36-.98.85L1.2 12.8A2 2 0 0 0 3.17 15h9.66a2 2 0 0 0 1.97-2.2l-1.82-9.45A1 1 0 0 0 12 2.5H4Z"/>
+              </svg>
+              {b.name}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </aside>
+
+    <!-- Main -->
+    <div class="min-w-0">
+      <!-- Toolbar -->
+      <div class="flex items-center justify-between gap-3 border-b border-night-700 px-3 py-2">
+        <div class="flex items-center gap-1.5 truncate text-xs text-ink-muted">
+          <span class="text-brand-400">prod-assets</span>
+          <span class="text-ink-faint">/</span>
+          <span>releases</span>
+          <span class="text-ink-faint">/</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="inline-flex items-center gap-1 rounded-md bg-brand-500 px-2.5 py-1 text-[11px] font-semibold text-white">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M8 1.5a.75.75 0 0 1 .75.75V9l1.9-1.9a.75.75 0 1 1 1.06 1.06L8.53 11.4a.75.75 0 0 1-1.06 0L4.29 8.16A.75.75 0 0 1 5.35 7.1L7.25 9V2.25A.75.75 0 0 1 8 1.5Z"/><path d="M2.5 12a.75.75 0 0 1 .75.75v.75h9.5v-.75a.75.75 0 0 1 1.5 0v1.5a.75.75 0 0 1-.75.75H2.5a.75.75 0 0 1-.75-.75v-1.5A.75.75 0 0 1 2.5 12Z"/></svg>
+            Upload
+          </span>
+          <span class="rounded-md border border-night-700 px-2.5 py-1 text-[11px] text-ink-muted">New folder</span>
+        </div>
+      </div>
+
+      <!-- Grid header -->
+      <div class="grid grid-cols-[1fr_90px_110px_110px] border-b border-night-700 bg-night-950/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+        <span>Name</span>
+        <span class="text-right">Size</span>
+        <span class="text-right">Modified</span>
+        <span class="text-right">Storage</span>
+      </div>
+
+      <!-- Rows -->
+      <ul class="text-xs">
+        {rows.map((r) => (
+          <li
+            class:list={[
+              'grid grid-cols-[1fr_90px_110px_110px] items-center px-3 py-2 border-b border-night-800/60',
+              r.selected ? 'bg-brand-500/10' : '',
+            ]}
+          >
+            <span class="flex min-w-0 items-center gap-2">
+              {r.icon === 'folder' ? (
+                <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true" class="shrink-0 text-brand-400"><path d="M1.5 4A1.5 1.5 0 0 1 3 2.5h3l1.5 1.5H13A1.5 1.5 0 0 1 14.5 5.5v6A1.5 1.5 0 0 1 13 13H3a1.5 1.5 0 0 1-1.5-1.5V4Z"/></svg>
+              ) : (
+                <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true" class="shrink-0 text-ink-faint"><path d="M4 1.5A1.5 1.5 0 0 0 2.5 3v10A1.5 1.5 0 0 0 4 14.5h8a1.5 1.5 0 0 0 1.5-1.5V6L9 1.5H4Z"/></svg>
+              )}
+              <span class:list={['truncate', r.muted ? 'text-ink-muted' : 'text-ink', r.selected ? 'font-medium' : '']}>{r.name}</span>
+            </span>
+            <span class="text-right tabular-nums text-ink-muted">{r.size}</span>
+            <span class="text-right tabular-nums text-ink-muted">{r.modified}</span>
+            <span class="text-right">
+              <span class="rounded bg-night-800 px-1.5 py-0.5 text-[10px] text-ink-faint">{r.klass}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <!-- Status bar -->
+      <div class="flex items-center justify-between px-3 py-1.5 text-[11px] text-ink-faint">
+        <span>7 items · 1 selected</span>
+        <span class="tabular-nums">1.7 GB scanned</span>
+      </div>
+    </div>
+  </div>
+</div>
