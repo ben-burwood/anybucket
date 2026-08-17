@@ -166,3 +166,39 @@ pub struct ScanProgress {
     /// Set on the terminal event if the scan failed.
     pub error: Option<String>,
 }
+
+/// The `s3://` URI and HTTPS URL for an object under the active connection.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectUris {
+    pub s3_uri: String,
+    pub https_url: String,
+}
+
+/// A single explicit object to delete: its key plus an optional version id
+/// (present only when deleting a specific version row).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteTarget {
+    pub key: String,
+    pub version_id: Option<String>,
+}
+
+/// A single explicit object to copy/move: its source key (+ optional version)
+/// and the destination key it should land at.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyTarget {
+    pub key: String,
+    pub version_id: Option<String>,
+    pub dst_key: String,
+}
+
+/// A folder to copy/move recursively: every object under `src_prefix` is
+/// re-keyed under `dst_prefix`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyPrefix {
+    pub src_prefix: String,
+    pub dst_prefix: String,
+}

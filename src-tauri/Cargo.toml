@@ -1,11 +1,11 @@
 [package]
 name = "anybucket"
-version = "0.4.2"
 description = "Desktop explorer for S3-compatible object stores"
-authors = ["Ben Burwood"]
-license = "MIT"
-edition = "2021"
-rust-version = "1.77.2"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 
 [lib]
 name = "anybucket_lib"
@@ -15,34 +15,21 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+anybucket-core = { path = "../anybucket-core" }
+
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-clipboard-manager = "2"
 
-# S3 / AWS
-aws-config = { version = "1", features = ["behavior-version-latest"] }
+# Referenced directly for the cached client type passed into the core tasks.
 aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
-aws-credential-types = "1"
-aws-smithy-types = { version = "1", features = ["http-body-1-x"] }
-aws-smithy-runtime-api = "1"
 
-# Async + streaming
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util", "sync"] }
-futures-util = "0.3"
-http-body = "1"
-bytes = "1"
-pin-project-lite = "0.2"
+# Async: mutex-guarded state + local-disk upload enumeration.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }
 
-# Secrets + persistence + models
+# Desktop secret store (OS keychain)
 keyring = { version = "3", features = ["windows-native", "apple-native", "sync-secret-service"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "2"
-uuid = { version = "1", features = ["v4"] }
-url = "2"
-percent-encoding = "2"
 
 [features]
-# By default Tauri runs in production mode; `tauri dev` toggles custom-protocol off.
 custom-protocol = ["tauri/custom-protocol"]

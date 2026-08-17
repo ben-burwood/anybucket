@@ -104,12 +104,6 @@ where
     }
 }
 
-impl From<keyring::Error> for AppError {
-    fn from(err: keyring::Error) -> Self {
-        AppError::Keychain(err.to_string())
-    }
-}
-
 impl From<std::io::Error> for AppError {
     fn from(err: std::io::Error) -> Self {
         AppError::Other(err.to_string())

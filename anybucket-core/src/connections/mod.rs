@@ -4,9 +4,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 
-/// Keychain service name under which all connection secrets are stored.
-/// Each secret is keyed by the connection's `id`.
-const KEYCHAIN_SERVICE: &str = "co.anybucket";
+/// Where a connection's secret access key is stored, keyed by connection `id`.
+///
+/// The connection metadata (endpoint, region, access key id, mode) persists as
+/// plaintext JSON, but the secret access key never does — it lives only behind a
+/// `SecretStore`. Each runtime shell provides its own implementation: the desktop
+/// app backs it with the OS keychain, the server with a file/volume on disk.
+pub trait SecretStore: Send + Sync {
+    fn set(&self, id: &str, secret: &str) -> AppResult<()>;
+    fn get(&self, id: &str) -> AppResult<String>;
+    fn delete(&self, id: &str) -> AppResult<()>;
+}
 
 /// What a connection is permitted to do, in increasing order of capability.
 ///
@@ -90,16 +98,17 @@ struct ConnectionsFile {
 }
 
 /// Persistent store of connection metadata backed by a JSON file, with secrets
-/// delegated to the OS keychain.
+/// delegated to a pluggable [`SecretStore`].
 pub struct ConnectionStore {
     path: PathBuf,
     data: ConnectionsFile,
+    secrets: Box<dyn SecretStore>,
 }
 
 impl ConnectionStore {
     /// Load the store from `config_dir/connections.json`, creating an empty one
-    /// if the file does not yet exist.
-    pub fn load(config_dir: &Path) -> AppResult<Self> {
+    /// if the file does not yet exist. Secrets are delegated to `secrets`.
+    pub fn load(config_dir: &Path, secrets: Box<dyn SecretStore>) -> AppResult<Self> {
         let path = config_dir.join("connections.json");
         let data = if path.exists() {
             let raw = std::fs::read_to_string(&path)?;
@@ -107,7 +116,11 @@ impl ConnectionStore {
         } else {
             ConnectionsFile::default()
         };
-        Ok(Self { path, data })
+        Ok(Self {
+            path,
+            data,
+            secrets,
+        })
     }
 
     fn persist(&self) -> AppResult<()> {
@@ -142,10 +155,10 @@ impl ConnectionStore {
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        // An empty secret on edit means "keep the existing keychain entry"; only
+        // An empty secret on edit means "keep the existing secret"; only
         // (over)write when the caller actually supplied a secret.
         if !input.secret_access_key.is_empty() {
-            set_secret(&id, &input.secret_access_key)?;
+            self.secrets.set(&id, &input.secret_access_key)?;
         }
 
         let conn = input.to_connection(id.clone());
@@ -169,8 +182,8 @@ impl ConnectionStore {
         if self.data.active_id.as_deref() == Some(id) {
             self.data.active_id = None;
         }
-        // Best-effort: a missing keychain entry is not an error worth failing on.
-        let _ = delete_secret(id);
+        // Best-effort: a missing secret entry is not an error worth failing on.
+        let _ = self.secrets.delete(id);
         self.persist()?;
         Ok(())
     }
@@ -185,9 +198,11 @@ impl ConnectionStore {
         Ok(())
     }
 
-    /// Fetch the secret access key for a connection from the keychain.
+    /// Fetch the secret access key for a connection from the secret store.
     pub fn secret_for(&self, id: &str) -> AppResult<String> {
-        get_secret(id).map_err(|_| AppError::MissingCredentials(id.to_string()))
+        self.secrets
+            .get(id)
+            .map_err(|_| AppError::MissingCredentials(id.to_string()))
     }
 }
 
@@ -196,22 +211,4 @@ fn normalize_endpoint(endpoint: Option<String>) -> Option<String> {
     endpoint
         .map(|e| e.trim().to_string())
         .filter(|e| !e.is_empty())
-}
-
-fn entry(id: &str) -> AppResult<keyring::Entry> {
-    Ok(keyring::Entry::new(KEYCHAIN_SERVICE, id)?)
-}
-
-fn set_secret(id: &str, secret: &str) -> AppResult<()> {
-    entry(id)?.set_password(secret)?;
-    Ok(())
-}
-
-fn get_secret(id: &str) -> AppResult<String> {
-    Ok(entry(id)?.get_password()?)
-}
-
-fn delete_secret(id: &str) -> AppResult<()> {
-    entry(id)?.delete_credential()?;
-    Ok(())
 }
