@@ -27,13 +27,34 @@ function open(bucket: Bucket) {
   router.push({ name: "browse", params: { bucket: bucket.name } });
 }
 
+function startResize(e: PointerEvent) {
+  e.preventDefault();
+  const startX = e.clientX;
+  const startWidth = sidebar.state.width;
+  document.body.style.cursor = "ew-resize";
+  document.body.style.userSelect = "none";
+
+  function onMove(ev: PointerEvent) {
+    sidebar.setWidth(startWidth + (ev.clientX - startX));
+  }
+  function onUp() {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+}
+
 watch(activeId, (id) => bucketCache.ensure(id));
 onMounted(() => bucketCache.ensure(activeId.value));
 </script>
 
 <template>
   <aside
-    class="flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-night-800 dark:bg-night-900"
+    class="relative flex shrink-0 flex-col border-r border-slate-200 bg-white dark:border-night-800 dark:bg-night-900"
+    :style="{ width: sidebar.state.width + 'px' }"
   >
     <!-- Header -->
     <div
@@ -124,6 +145,16 @@ onMounted(() => bucketCache.ensure(activeId.value));
           </button>
         </li>
       </ul>
+    </div>
+
+    <div
+      title="Drag to resize"
+      class="group absolute inset-y-0 right-0 z-10 w-1.5 translate-x-1/2 cursor-ew-resize"
+      @pointerdown="startResize"
+    >
+      <div
+        class="h-full w-px bg-transparent transition-colors group-hover:bg-emerald-500"
+      />
     </div>
   </aside>
 </template>
