@@ -31,8 +31,14 @@ import { useConnections } from "../store/useConnections";
 import { useUploads } from "../store/useUploads";
 import { useBucketMetrics } from "../store/useBucketMetrics";
 import * as s3 from "../api/s3";
+import { isTauri } from "../platform";
 import { errorMessage, type ObjectItem } from "../types";
 import { fileType, formatDate, formatSize } from "../utils/format";
+import {
+  filesFromDataTransfer,
+  filesFromInput,
+  type WebUploadEntry,
+} from "../utils/webUpload";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
 import ConfirmModal from "./ConfirmModal.vue";
@@ -77,7 +83,12 @@ const theme = computed(() =>
 
 /** Copy the `s3://bucket/prefix` URI of the current directory. */
 async function copyCurrentUri() {
-  await writeText(`s3://${props.bucket}/${props.prefix}`);
+  const uri = `s3://${props.bucket}/${props.prefix}`;
+  if (isTauri) {
+    await writeText(uri);
+  } else {
+    await navigator.clipboard.writeText(uri);
+  }
   uriCopied.value = true;
   window.setTimeout(() => (uriCopied.value = false), 1500);
 }
@@ -199,16 +210,12 @@ async function confirmDelete() {
 
 // --- Copy / Move ---------------------------------------------------------
 
-// The destination picker drives its own `busy`/progress/error while the
-// transfer runs; it closes only on success.
 const pickerOpen = ref(false);
 const pickerMode = ref<"copy" | "move">("copy");
 const transferBusy = ref(false);
 const transferProgress = ref<string | null>(null);
 const transferError = ref<string | null>(null);
 
-// Full prefixes of any selected folders — the picker greys these out (a folder
-// can't be moved into itself or a descendant).
 const sourceFolderPrefixes = computed(() =>
   selectedRows.value
     .filter((r) => r.kind === "folder" && r.prefix != null)
@@ -278,7 +285,6 @@ async function executeTransfer(
     gridApi?.deselectAll();
     selectedRows.value = [];
     await refreshAfterMutation();
-    // Cross-bucket transfers changed the destination bucket too.
     if (destBucket !== props.bucket) {
       metricsCache.invalidate(conns.state.active?.id, destBucket);
     }
@@ -304,8 +310,7 @@ async function onDestinationConfirm(dest: { bucket: string; prefix: string }) {
 
 // --- Drag-and-drop (row → folder) ----------------------------------------
 
-// Dragging a row (or the whole selection) onto a folder row moves it there; an
-// Alt-drag copies instead. A small confirm modal precedes the transfer.
+// Dragging a row (or the whole selection) onto a folder row moves it there; an Alt-drag copies instead.
 const dragModalOpen = ref(false);
 const dragIsMove = ref(true);
 const dragRows = ref<Row[]>([]);
@@ -398,8 +403,7 @@ function setDragHighlight(rowId: string | null) {
 // --- Rename --------------------------------------------------------------
 
 // Toolbar rename: enabled only when exactly one current file is selected on a
-// delete-capable connection (rename = copy + delete of the old key). Same as the
-// side panel's rename, exposed as a compact popover for consistency.
+// delete-capable connection (rename = copy + delete of the old key).
 const renameTarget = computed<Row | null>(() => {
   if (!conns.canDelete.value || selectedRows.value.length !== 1) return null;
   const r = selectedRows.value[0];
@@ -475,16 +479,13 @@ async function submitRename() {
 // --- Uploads -------------------------------------------------------------
 
 const uploading = ref(false);
-// True while an OS drag is hovering the window (shows the drop overlay).
 const dragActive = ref(false);
-// Whether the Upload button's files/folder menu is open.
 const uploadMenuOpen = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
 
-// Max concurrent uploads — a dropped folder can be hundreds of files, so we
-// cap in-flight PUTs rather than firing them all at once.
+// Max concurrent uploads — cap in-flight PUTs rather than firing them all at once.
 const UPLOAD_CONCURRENCY = 5;
-// Above this many files we skip the per-file existence check (which is one HEAD
-// each) and show a single generic overwrite warning instead.
+// Above this many files we skip the per-file existence check and show a single generic overwrite warning instead.
 const OVERWRITE_CHECK_LIMIT = 100;
 // Cap on concurrent existence probes (HEADs) when checking for overwrites.
 const OVERWRITE_PROBE_CONCURRENCY = 8;
@@ -496,27 +497,39 @@ const OVERWRITE_PROBE_CONCURRENCY = 8;
  */
 async function pickAndUpload(directory: boolean) {
   uploadMenuOpen.value = false;
-  const selection = await open({ multiple: true, directory });
-  if (!selection) return;
-  await uploadFiles(Array.isArray(selection) ? selection : [selection]);
+  if (isTauri) {
+    const selection = await open({ multiple: true, directory });
+    if (!selection) return;
+    await uploadFiles(Array.isArray(selection) ? selection : [selection]);
+  } else if (fileInput.value) {
+    // Web: switch the hidden <input> between files and folder, then open it;
+    // upload happens on its change event.
+    fileInput.value.webkitdirectory = directory;
+    fileInput.value.click();
+  }
 }
 
+/** Web file/folder picker change handler → upload the chosen `File`s. */
+async function onWebPick(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const entries = filesFromInput(input);
+  input.value = ""; // reset so re-picking the same selection fires change again
+  await uploadFilesWeb(entries);
+}
+
+/** One file queued for upload: its source (disk path or browser File) + placement. */
+type UploadSource = { source: string | File; relKey: string; size: number };
+
 /**
- * Expand dropped/picked `paths` (files or folders) into their files, warn before
- * overwriting, upload them (structure preserved, concurrency-capped), then
- * refresh the listing + metrics.
+ * Shared upload orchestrator (both shells): key each source under the current
+ * prefix, warn before overwriting, upload concurrency-capped, then refresh.
+ * `uploads.start` picks the disk-path vs File transport from the source type.
  */
-async function uploadFiles(paths: string[]) {
-  if (!conns.canWrite.value || paths.length === 0 || uploading.value) return;
+async function uploadSources(sources: UploadSource[]) {
+  if (!conns.canWrite.value || sources.length === 0 || uploading.value) return;
   uploading.value = true;
   try {
-    const entries = await s3.expandUploadPaths(paths);
-    const files = entries.map((e) => ({
-      ...e,
-      key: `${props.prefix}${e.relKey}`,
-    }));
-    if (files.length === 0) return;
-
+    const files = sources.map((s) => ({ ...s, key: `${props.prefix}${s.relKey}` }));
     if (
       !(await confirmOverwrite(
         props.bucket,
@@ -528,7 +541,7 @@ async function uploadFiles(paths: string[]) {
 
     // Concurrency-capped upload; `uploads.start` resolves per file (never throws).
     await runWithLimit(files, UPLOAD_CONCURRENCY, (f) =>
-      uploads.start(props.bucket, f.key, f.srcPath, f.relKey, f.size),
+      uploads.start(props.bucket, f.key, f.source, f.relKey, f.size),
     );
 
     await refreshAfterMutation();
@@ -537,11 +550,48 @@ async function uploadFiles(paths: string[]) {
   }
 }
 
+/** Web: upload enumerated browser `File`s (from the picker or drag-drop). */
+function uploadFilesWeb(entries: WebUploadEntry[]) {
+  return uploadSources(
+    entries.map((e) => ({ source: e.file, relKey: e.relKey, size: e.file.size })),
+  );
+}
+
+// Web drag-drop (files + folders) — desktop uses the native webview event below.
+function onWebDragOver(e: DragEvent) {
+  if (isTauri) return;
+  e.preventDefault();
+  if (conns.canWrite.value) dragActive.value = true;
+}
+function onWebDragLeave() {
+  if (isTauri) return;
+  dragActive.value = false;
+}
+async function onWebDrop(e: DragEvent) {
+  if (isTauri) return;
+  e.preventDefault();
+  dragActive.value = false;
+  if (!conns.canWrite.value || !e.dataTransfer) return;
+  await uploadFilesWeb(await filesFromDataTransfer(e.dataTransfer));
+}
+
 /**
- * Confirm overwriting existing keys at `bucket`. Returns false only if the user
- * cancels. Each file carries the `key` to probe and a `label` shown per
- * collision; `verb` seeds the warning copy ("Upload" / "Transfer"). Shared by
- * the upload and copy/move paths.
+ * Desktop: expand dropped/picked disk `paths` (files or folders) into their files
+ * (structure preserved), then hand them to the shared uploader.
+ */
+async function uploadFiles(paths: string[]) {
+  if (paths.length === 0) return;
+  const entries = await s3.expandUploadPaths(paths);
+  await uploadSources(
+    entries.map((e) => ({ source: e.srcPath, relKey: e.relKey, size: e.size })),
+  );
+}
+
+/**
+ * Confirm overwriting existing keys at `bucket`. Returns false only if the user cancels.
+ * Each file carries the `key` to probe and a `label` shown per collision;
+ * `verb` seeds the warning copy ("Upload" / "Transfer").
+ * Shared by the upload and copy/move paths.
  */
 async function confirmOverwrite(
   bucket: string,
@@ -597,6 +647,8 @@ async function runWithLimit<T>(
 let unlistenDrag: UnlistenFn | undefined;
 
 onMounted(async () => {
+  // Native OS path drag-drop is Tauri-only; the browser uses DOM drag-drop (onWebDrop) with File objects instead.
+  if (!isTauri) return;
   unlistenDrag = await getCurrentWebview().onDragDropEvent((event) => {
     const p = event.payload;
     if (p.type === "enter" || p.type === "over") {
@@ -707,8 +759,8 @@ const columnDefs = computed<ColDef<Row>[]>(() => {
   return cols;
 });
 
-// Sorting is client-side, so it only reorders the rows currently loaded. On a
-// truncated listing (more pages behind the continuation token) that would sort a
+// Sorting is client-side, so it only reorders the rows currently loaded.
+// On a truncated listing (more pages behind the continuation token) that would sort a
 // partial set and mislead — so only allow sorting once the whole listing is in.
 const sortingEnabled = computed(() => !state.listing?.nextToken);
 
@@ -719,8 +771,7 @@ const defaultColDef = computed<ColDef>(() => ({
 
 // Selection mode: checkbox multi-select on any write-capable connection (drives
 // the bulk copy/move/delete flows), otherwise plain single-row. Either way,
-// row-body clicks still navigate / open detail via `onRowClicked` (selection is
-// checkbox-only).
+// row-body clicks still navigate / open detail via `onRowClicked` (selection is checkbox-only).
 const rowSelection = computed<RowSelectionOptions<Row>>(() =>
   conns.canWrite.value
     ? {
@@ -821,7 +872,15 @@ watch(
 <template>
   <div class="flex h-full">
     <!-- Main browser -->
-    <div class="relative flex min-w-0 flex-1 flex-col">
+    <div
+      class="relative flex min-w-0 flex-1 flex-col"
+      @dragover="onWebDragOver"
+      @dragleave="onWebDragLeave"
+      @drop="onWebDrop"
+    >
+      <!-- Hidden web file/folder picker (browser shell only); webkitdirectory is
+           toggled in pickAndUpload to switch between files and a folder. -->
+      <input ref="fileInput" type="file" multiple class="hidden" @change="onWebPick" />
       <!-- Drag-and-drop overlay (read-write only) -->
       <div
         v-if="dragActive"
@@ -1005,6 +1064,7 @@ watch(
               </div>
             </template>
           </div>
+          <!-- Upload: disk-path stream on desktop, File POST on web. -->
           <div v-if="conns.canWrite.value" class="relative">
             <button
               class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"

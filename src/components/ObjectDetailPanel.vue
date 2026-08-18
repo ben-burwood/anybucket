@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { isTauri } from "../platform";
 import * as s3 from "../api/s3";
 import { useDownloads } from "../store/useDownloads";
 import { useConnections } from "../store/useConnections";
@@ -80,6 +81,15 @@ async function generatePresigned() {
   }
 }
 
+// Open a URL in the user's browser: the Tauri opener plugin on desktop, a plain new tab on web.
+function openInBrowser(url: string) {
+  if (isTauri) {
+    openUrl(url);
+  } else {
+    window.open(url, "_blank", "noopener");
+  }
+}
+
 function download() {
   downloads.start(
     props.bucket,
@@ -92,8 +102,8 @@ function download() {
 // --- Rename --------------------------------------------------------------
 
 // Rename = copy to the new key + delete the old one (a single-object move via
-// `transfer_objects`), so it needs delete rights. Only the live object can be
-// renamed — not a previous version or a delete marker.
+// `transfer_objects`), so it needs delete rights.
+// Only the live object can be renamed — not a previous version or a delete marker.
 const canRename = computed(
   () =>
     conns.canDelete.value &&
@@ -159,9 +169,9 @@ async function doRename() {
 
 // --- Delete --------------------------------------------------------------
 
-// Delete this object (its specific version when viewing one). Needs delete
-// rights; allowed for any row, including delete markers (removing a marker
-// restores the prior version).
+// Delete this object (its specific version when viewing one).
+// Needs delete rights; allowed for any row, including delete markers
+// (removing a marker restores the prior version).
 const deleting = ref(false);
 
 async function doDelete() {
@@ -301,7 +311,7 @@ onMounted(loadDetails);
         <CopyableValue v-if="presigned" :value="presigned">
           <button
             class="shrink-0 rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
-            @click="openUrl(presigned!)"
+            @click="openInBrowser(presigned!)"
           >
             Open
           </button>
@@ -318,7 +328,7 @@ onMounted(loadDetails);
 
     <!-- Actions -->
     <footer class="space-y-2 border-t border-slate-200 p-3 dark:border-night-800">
-      <!-- Rename (current object on a delete-capable connection only) -->
+      <!-- Rename (current object on a delete-capable connection only). -->
       <template v-if="canRename">
         <button
           v-if="!renameOpen"
@@ -358,7 +368,7 @@ onMounted(loadDetails);
         </div>
       </template>
 
-      <!-- Delete (delete-capable connection); works on any row incl. markers -->
+      <!-- Delete (delete-capable connection); works on any row incl. markers. -->
       <button
         v-if="conns.canDelete.value"
         class="w-full rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
@@ -368,6 +378,7 @@ onMounted(loadDetails);
         {{ deleting ? "Deleting…" : "🗑 Delete" }}
       </button>
 
+      <!-- Download: native save-stream on desktop, browser download on web. -->
       <button
         v-if="!object.isDeleteMarker"
         class="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"

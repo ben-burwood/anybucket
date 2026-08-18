@@ -6,7 +6,7 @@
 services:
   garage:
     container_name: anybucket-garage
-    image: dxflrs/garage
+    image: dxflrs/garage:v2.3.0
     restart: unless-stopped
     ports:
       - "3900:3900"   # S3 API

@@ -1,0 +1,10 @@
+services:
+  anybucket:
+    build: .
+    # image: ghcr.io/ben-burwood/anybucket:latest
+    ports:
+      - "8080:8080"
+    environment:
+      ANYBUCKET_MASTER_KEY: ${ANYBUCKET_MASTER_KEY:?set ANYBUCKET_MASTER_KEY in .env}
+    volumes:
+      - ./anybucket-config:/config

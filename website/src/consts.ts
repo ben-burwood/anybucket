@@ -10,6 +10,8 @@ export const API_LATEST_RELEASE = `${API_REPO}/releases/latest`;
 
 export const WINGET_ID = 'BenBurwood.AnyBucket';
 
+export const DOCKER_IMAGE = 'ghcr.io/ben-burwood/anybucket:latest';
+
 // GitHub Pages serves the site under a base path (see astro.config.mjs).
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 export const asset = (path: string) => `${BASE}${path}`;

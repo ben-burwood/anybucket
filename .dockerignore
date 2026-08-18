@@ -1,0 +1,18 @@
+# Build artifacts and local state — never needed in the image build context.
+# Use **/ so nested crates (e.g. src-tauri/target) are excluded too, not just root.
+**/node_modules
+**/dist
+**/target
+.git
+
+# Secrets + local runtime state — must never enter the build context/image.
+.env
+config
+
+# Local dev stack + volumes
+dev
+website
+
+# Editor / OS cruft
+.DS_Store
+*.log

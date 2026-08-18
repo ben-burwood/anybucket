@@ -1,4 +1,5 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { appError, Channel, invoke } from "./transport";
+import { isAppError } from "../types";
 import type {
   Bucket,
   BucketMetrics,
@@ -227,4 +228,67 @@ export function scanBucketMetrics(
   const channel = new Channel<ScanProgress>();
   channel.onmessage = onProgress;
   return invoke("scan_bucket_metrics", { bucket, onProgress: channel });
+}
+
+// ---------------------------------------------------------------------------
+// Web-only transfers (browser File upload + server-proxied download). The
+// desktop shell uses the disk-path `Channel` variants above; these back the
+// browser reroute (see `useUploads`/`useDownloads`).
+// ---------------------------------------------------------------------------
+
+/** Best-effort parse of a failed upload's response into core's `AppError` shape. */
+function xhrError(xhr: XMLHttpRequest) {
+  try {
+    const data = JSON.parse(xhr.responseText);
+    if (isAppError(data)) return data;
+  } catch {
+    // fall through to a generic error
+  }
+  return appError(xhr.responseText || xhr.statusText || "upload failed");
+}
+
+/**
+ * Upload a browser `File` to `bucket/key` by streaming it as the POST body to the
+ * server, which pipes it into S3. Progress comes from `XHR.upload` events
+ * (browser→server bytes). Rejects with the server's `{ kind, message }` on failure.
+ */
+export function uploadObjectWeb(
+  bucket: string,
+  key: string,
+  file: File,
+  onProgress: (p: UploadProgress) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const url = `/api/objects/upload?bucket=${encodeURIComponent(
+      bucket,
+    )}&key=${encodeURIComponent(key)}`;
+    xhr.open("POST", url);
+    xhr.upload.onprogress = (e) => {
+      onProgress({
+        key,
+        uploaded: e.loaded,
+        total: e.lengthComputable ? e.total : file.size,
+        done: false,
+        error: null,
+      });
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(xhrError(xhr));
+    xhr.onerror = () => reject(appError("network error during upload"));
+    xhr.onabort = () => reject(appError("upload aborted"));
+    // The browser sets Content-Length (File.size) and Content-Type automatically.
+    xhr.send(file);
+  });
+}
+
+/** URL for the server-proxied download of an object (anchor-navigated by the browser). */
+export function downloadUrl(
+  bucket: string,
+  key: string,
+  versionId?: string | null,
+): string {
+  const params = new URLSearchParams({ bucket, key });
+  if (versionId) params.set("versionId", versionId);
+  return `/api/objects/download?${params.toString()}`;
 }

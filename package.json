@@ -1,12 +1,14 @@
 {
   "name": "anybucket",
   "private": true,
-  "version": "0.4.2",
+  "version": "0.5.0",
   "type": "module",
   "description": "Desktop explorer for S3-compatible object stores",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "dev:web": "vite --mode web",
+    "build:web": "vue-tsc --noEmit && vite build --mode web",
     "preview": "vite preview",
     "tauri": "tauri"
   },

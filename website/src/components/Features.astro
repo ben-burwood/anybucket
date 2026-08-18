@@ -7,9 +7,15 @@ const features = [
     highlight: true,
   },
   {
-    title: 'Secrets in the OS keychain',
-    body: 'Access keys are stored in your operating system keychain — never in plaintext config files.',
+    title: 'Secrets stay protected',
+    body: 'On the desktop, access keys live in your OS keychain. Self-hosted, they are AES-256-GCM encrypted at rest under a master key — never in plaintext.',
     icon: 'lock',
+    highlight: true,
+  },
+  {
+    title: 'Desktop app or self-hosted',
+    body: 'Run the native desktop build, or self-host the same UI as a single Docker container — an axum server that talks to S3 server-side, sharing the same Rust core.',
+    icon: 'server',
     highlight: true,
   },
   {
@@ -60,6 +66,7 @@ const icons: Record<string, string> = {
   upload: '<path d="M12 3 7 8h3v7h4V8h3l-5-5Z"/><path d="M5 18h14v2H5z"/>',
   move: '<path d="M12 2 9 5h2v6H5V9L2 12l3 3v-2h6v6H9l3 3 3-3h-2v-6h6v2l3-3-3-3v2h-6V5h2l-3-3Z"/>',
   chart: '<path d="M4 20V10h4v10H4Zm6 0V4h4v16h-4Zm6 0v-7h4v7h-4Z"/>',
+  server: '<path d="M4 4h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm3 2.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM4 14h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Zm3 2.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/>',
 };
 ---
 
