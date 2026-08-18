@@ -2,10 +2,12 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import * as api from "../api/connections";
 import { useConnections } from "../store/useConnections";
+import { useConfirm } from "../store/useConfirm";
 import { errorMessage, type Connection, type ConnectionInput } from "../types";
 import AccessModeChip from "./AccessModeChip.vue";
 
 const conns = useConnections();
+const confirmDialog = useConfirm();
 
 type ProviderId = "aws" | "minio" | "garage" | "rustfs" | "other";
 
@@ -131,7 +133,14 @@ async function save() {
 }
 
 async function remove(c: Connection) {
-  if (!confirm(`Delete connection "${c.name}"?`)) return;
+  if (
+    !(await confirmDialog.confirm({
+      title: `Delete connection "${c.name}"?`,
+      confirmLabel: "Delete",
+      danger: true,
+    }))
+  )
+    return;
   await conns.remove(c.id);
   if (form.id === c.id) resetForm();
 }

@@ -30,6 +30,7 @@ import { useTheme } from "../store/useTheme";
 import { useConnections } from "../store/useConnections";
 import { useUploads } from "../store/useUploads";
 import { useBucketMetrics } from "../store/useBucketMetrics";
+import { useConfirm } from "../store/useConfirm";
 import * as s3 from "../api/s3";
 import { isTauri } from "../platform";
 import { errorMessage, type ObjectItem } from "../types";
@@ -51,6 +52,7 @@ const { state, load, applyFilter, setVersions, refresh, loadMore } = useBrowser(
 const conns = useConnections();
 const uploads = useUploads();
 const metricsCache = useBucketMetrics();
+const confirmDialog = useConfirm();
 
 const { isDark } = useTheme();
 
@@ -454,9 +456,10 @@ async function submitRename() {
   try {
     if (
       (await s3.objectExists(props.bucket, newKey)) &&
-      !(await askOverwrite(
-        `“${name}” already exists here and will be overwritten. Continue?`,
-      ))
+      !(await confirmDialog.confirm({
+        title: `“${name}” already exists here and will be overwritten. Continue?`,
+        confirmLabel: "Overwrite",
+      }))
     )
       return;
   } catch {
@@ -491,29 +494,6 @@ const UPLOAD_CONCURRENCY = 5;
 const OVERWRITE_CHECK_LIMIT = 100;
 // Cap on concurrent existence probes (HEADs) when checking for overwrites.
 const OVERWRITE_PROBE_CONCURRENCY = 8;
-
-const overwriteModalOpen = ref(false);
-const overwriteTitle = ref("");
-const overwriteItems = ref<string[]>([]);
-let overwriteResolve: ((ok: boolean) => void) | null = null;
-
-/** Open the overwrite modal and resolve true on confirm, false on cancel. */
-function askOverwrite(title: string, items: string[] = []): Promise<boolean> {
-  overwriteTitle.value = title;
-  overwriteItems.value = items;
-  overwriteModalOpen.value = true;
-  return new Promise((resolve) => {
-    overwriteResolve = resolve;
-  });
-}
-
-/** Close the overwrite modal and settle its pending promise. */
-function settleOverwrite(ok: boolean) {
-  overwriteModalOpen.value = false;
-  const resolve = overwriteResolve;
-  overwriteResolve = null;
-  resolve?.(ok);
-}
 
 /**
  * Open the native picker and upload the selection. A single native dialog can't
@@ -626,9 +606,10 @@ async function confirmOverwrite(
   if (files.length === 0) return true;
   // Big batches (whole folders): one generic warning, no HEAD-per-file storm.
   if (files.length > OVERWRITE_CHECK_LIMIT) {
-    return askOverwrite(
-      `${verb} ${files.length} files here? Any existing files with the same names will be overwritten.`,
-    );
+    return confirmDialog.confirm({
+      title: `${verb} ${files.length} files here? Any existing files with the same names will be overwritten.`,
+      confirmLabel: "Overwrite",
+    });
   }
 
   // Probe existence with bounded concurrency rather than one HEAD per file at once.
@@ -643,10 +624,11 @@ async function confirmOverwrite(
   const collisions = files.filter((_, i) => existing[i]).map((f) => f.label);
   if (collisions.length === 0) return true;
 
-  return askOverwrite(
-    `${collisions.length} file(s) already exist and will be overwritten. Continue?`,
-    collisions,
-  );
+  return confirmDialog.confirm({
+    title: `${collisions.length} file(s) already exist and will be overwritten. Continue?`,
+    items: collisions,
+    confirmLabel: "Overwrite",
+  });
 }
 
 /** Run `worker` over `items` with at most `limit` in flight at once. */
@@ -685,11 +667,7 @@ onMounted(async () => {
   });
 });
 
-onBeforeUnmount(() => {
-  unlistenDrag?.();
-  // Unblock any flow still awaiting the overwrite modal so its async frame unwinds.
-  settleOverwrite(false);
-});
+onBeforeUnmount(() => unlistenDrag?.());
 
 interface Row {
   kind: "folder" | "file";
@@ -1325,16 +1303,6 @@ watch(
       :confirm-label="dragIsMove ? 'Move' : 'Copy'"
       @confirm="confirmDragTransfer"
       @cancel="dragModalOpen = false"
-    />
-
-    <!-- Overwrite confirmation for uploads and renames -->
-    <ConfirmModal
-      :open="overwriteModalOpen"
-      :title="overwriteTitle"
-      :items="overwriteItems"
-      confirm-label="Overwrite"
-      @confirm="settleOverwrite(true)"
-      @cancel="settleOverwrite(false)"
     />
   </div>
 </template>

@@ -5,6 +5,7 @@ import { isTauri } from "../platform";
 import * as s3 from "../api/s3";
 import { useDownloads } from "../store/useDownloads";
 import { useConnections } from "../store/useConnections";
+import { useConfirm } from "../store/useConfirm";
 import { parentPrefix } from "../store/useBrowser";
 import { errorMessage, type ObjectItem, type ObjectMeta } from "../types";
 import { formatDate, formatSize } from "../utils/format";
@@ -15,6 +16,7 @@ const emit = defineEmits<{ close: []; renamed: []; deleted: [] }>();
 
 const downloads = useDownloads();
 const conns = useConnections();
+const confirmDialog = useConfirm();
 
 const meta = ref<ObjectMeta | null>(null);
 const s3Uri = ref<string>("");
@@ -148,7 +150,10 @@ async function doRename() {
   try {
     if (
       (await s3.objectExists(props.bucket, newKey)) &&
-      !confirm(`“${name}” already exists here and will be overwritten. Continue?`)
+      !(await confirmDialog.confirm({
+        title: `“${name}” already exists here and will be overwritten. Continue?`,
+        confirmLabel: "Overwrite",
+      }))
     )
       return;
   } catch {
@@ -175,7 +180,14 @@ async function doRename() {
 const deleting = ref(false);
 
 async function doDelete() {
-  if (!confirm(`Delete “${props.object.name}”? This cannot be undone.`)) return;
+  if (
+    !(await confirmDialog.confirm({
+      title: `Delete “${props.object.name}”? This cannot be undone.`,
+      confirmLabel: "Delete",
+      danger: true,
+    }))
+  )
+    return;
   deleting.value = true;
   error.value = null;
   try {

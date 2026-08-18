@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "./platform";
 import { useConnections } from "./store/useConnections";
 import { useSidebar } from "./store/useSidebar";
+import { useConfirm } from "./store/useConfirm";
 import BucketSidebar from "./components/BucketSidebar.vue";
 import ConnectionSwitcher from "./components/ConnectionSwitcher.vue";
 import ThemeToggle from "./components/ThemeToggle.vue";
@@ -12,9 +13,11 @@ import WindowControls from "./components/WindowControls.vue";
 import WindowResizers from "./components/WindowResizers.vue";
 import DownloadToasts from "./components/DownloadToasts.vue";
 import UploadToasts from "./components/UploadToasts.vue";
+import ConfirmModal from "./components/ConfirmModal.vue";
 
 const conns = useConnections();
 const sidebar = useSidebar();
+const confirmDialog = useConfirm();
 const route = useRoute();
 
 const sidebarAllowed = computed(() => route.meta.sidebar !== false);
@@ -85,5 +88,16 @@ function onTitlebarDblClick(e: MouseEvent) {
     <UploadToasts />
     <DownloadToasts v-if="isTauri" />
     <WindowResizers v-if="isTauri" />
+
+    <!-- App-wide confirmation modal, driven by the useConfirm() store. -->
+    <ConfirmModal
+      :open="confirmDialog.state.open"
+      :title="confirmDialog.state.title"
+      :items="confirmDialog.state.items"
+      :confirm-label="confirmDialog.state.confirmLabel"
+      :danger="confirmDialog.state.danger"
+      @confirm="confirmDialog.settle(true)"
+      @cancel="confirmDialog.settle(false)"
+    />
   </div>
 </template>
