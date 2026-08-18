@@ -27,3 +27,6 @@ dist-ssr
 *.sw?
 
 .env
+
+connections.json
+secrets.json
