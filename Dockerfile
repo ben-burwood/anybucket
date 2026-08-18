@@ -39,15 +39,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Run as an unprivileged user; own the config volume + app dir.
-RUN useradd -r -u 10001 -m -d /home/appuser appuser \
-    && mkdir -p /config /app \
-    && chown -R appuser:appuser /config /app
-
 WORKDIR /app
 
-COPY --from=server /usr/local/bin/anybucket-server /usr/local/bin/anybucket-server
-COPY --from=web --chown=appuser:appuser /app/dist /app/dist
+COPY --from=server /src/target/release/anybucket-server /usr/local/bin/anybucket-server
+COPY --from=web /app/dist /app/dist
 
 # Static SPA + persisted config/secrets locations
 ENV ANYBUCKET_STATIC_DIR=/app/dist \
@@ -57,8 +52,6 @@ ENV ANYBUCKET_STATIC_DIR=/app/dist \
 # Connection metadata + encrypted secrets live on this volume.
 VOLUME ["/config"]
 EXPOSE 8080
-
-USER appuser
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -fsS http://localhost:8080/api/health || exit 1
