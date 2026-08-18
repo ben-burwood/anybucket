@@ -1,6 +1,4 @@
 //! Higher-level operations that orchestrate the [`ops`] layer.
-//! Most stream progress; a few (e.g. [`create_folder`]) are one-shot but still live here
-//! because they carry shared policy both shells must run identically.
 //!
 //! They are transport-agnostic: the streaming ones take an `&Client` and a
 //! [`ProgressSink`], emitting the progress and terminal events.
@@ -143,9 +141,9 @@ pub async fn upload_object(
     result
 }
 
-/// Upload an object from an arbitrary byte stream (e.g. an HTTP request body)
-/// rather than a disk path — the web analogue of [`upload_object`]. Small bodies
-/// go up in one `PutObject`; larger ones stream through multipart, reading one
+/// Upload an object from an arbitrary byte stream (e.g. an HTTP request body) rather than a disk path
+///
+/// Small bodies go up in one `PutObject`; larger ones stream through multipart, reading one
 /// `PART_SIZE` chunk into memory at a time (bounded regardless of total size).
 ///
 /// `total` is the Content-Length when known: it selects single-shot vs multipart.
@@ -173,8 +171,8 @@ pub async fn upload_object_from_stream(
         return ops::put_object(client, bucket, key, ByteStream::from(buf), content_type).await;
     }
 
-    // Unknown or large size: read the first part up front. If the whole stream
-    // fits in one part (a short read — including an empty body), single-PUT it.
+    // Unknown or large size: read the first part up front.
+    // If the whole stream fits in one part (a short read — including an empty body), single-PUT it.
     // This avoids completing a multipart upload with a single 0-byte / short-only
     // part, which some S3 implementations reject (EntityTooSmall).
     let mut first = Vec::with_capacity(PART_SIZE as usize);
@@ -194,8 +192,7 @@ pub async fn upload_object_from_stream(
 }
 
 /// Upload `first` (already a full `PART_SIZE` chunk) as part 1, then keep reading
-/// `PART_SIZE` chunks and uploading them until the stream drains. Memory stays
-/// bounded to one part, and no empty trailing part is ever emitted.
+/// `PART_SIZE` chunks and uploading them until the stream drains.
 async fn stream_parts_sequential(
     client: &Client,
     bucket: &str,
@@ -208,9 +205,15 @@ async fn stream_parts_sequential(
     let mut buf = first;
     let mut part_number: i32 = 1;
     loop {
-        let completed =
-            ops::upload_part(client, bucket, key, upload_id, part_number, ByteStream::from(buf))
-                .await?;
+        let completed = ops::upload_part(
+            client,
+            bucket,
+            key,
+            upload_id,
+            part_number,
+            ByteStream::from(buf),
+        )
+        .await?;
         parts.push(completed);
         part_number += 1;
 
@@ -400,13 +403,13 @@ pub async fn delete_objects(
 // ---------------------------------------------------------------------------
 
 /// Copy (or, when `is_move`, copy-then-delete) the given explicit `objects` and
-/// recursive folder `prefixes` from `src_bucket` to `dst_bucket`. Streams a
-/// running copied-count and a terminal `done`/`error` event; returns the total
-/// number of objects copied.
+/// recursive folder `prefixes` from `src_bucket` to `dst_bucket`.
+/// Streams a running copied-count and a terminal `done`/`error` event;
+/// returns the total number of objects copied.
 ///
 /// A move copies everything first and only deletes the sources once every copy
-/// succeeded, so a failure can duplicate data but never lose it. The caller must
-/// enforce the write gate (and, for a move, the delete gate) before calling.
+/// succeeded, so a failure can duplicate data but never lose it.
+/// The caller must enforce the write gate (and, for a move, the delete gate) before calling.
 #[allow(clippy::too_many_arguments)]
 pub async fn transfer_objects(
     client: &Client,

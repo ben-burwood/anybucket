@@ -588,10 +588,10 @@ async function uploadFiles(paths: string[]) {
 }
 
 /**
- * Confirm overwriting existing keys at `bucket`. Returns false only if the user
- * cancels. Each file carries the `key` to probe and a `label` shown per
- * collision; `verb` seeds the warning copy ("Upload" / "Transfer"). Shared by
- * the upload and copy/move paths.
+ * Confirm overwriting existing keys at `bucket`. Returns false only if the user cancels.
+ * Each file carries the `key` to probe and a `label` shown per collision;
+ * `verb` seeds the warning copy ("Upload" / "Transfer").
+ * Shared by the upload and copy/move paths.
  */
 async function confirmOverwrite(
   bucket: string,
@@ -647,8 +647,7 @@ async function runWithLimit<T>(
 let unlistenDrag: UnlistenFn | undefined;
 
 onMounted(async () => {
-  // Native OS path drag-drop is Tauri-only; the browser uses DOM drag-drop
-  // (onWebDrop) with File objects instead.
+  // Native OS path drag-drop is Tauri-only; the browser uses DOM drag-drop (onWebDrop) with File objects instead.
   if (!isTauri) return;
   unlistenDrag = await getCurrentWebview().onDragDropEvent((event) => {
     const p = event.payload;
@@ -760,8 +759,8 @@ const columnDefs = computed<ColDef<Row>[]>(() => {
   return cols;
 });
 
-// Sorting is client-side, so it only reorders the rows currently loaded. On a
-// truncated listing (more pages behind the continuation token) that would sort a
+// Sorting is client-side, so it only reorders the rows currently loaded.
+// On a truncated listing (more pages behind the continuation token) that would sort a
 // partial set and mislead — so only allow sorting once the whole listing is in.
 const sortingEnabled = computed(() => !state.listing?.nextToken);
 
@@ -772,8 +771,7 @@ const defaultColDef = computed<ColDef>(() => ({
 
 // Selection mode: checkbox multi-select on any write-capable connection (drives
 // the bulk copy/move/delete flows), otherwise plain single-row. Either way,
-// row-body clicks still navigate / open detail via `onRowClicked` (selection is
-// checkbox-only).
+// row-body clicks still navigate / open detail via `onRowClicked` (selection is checkbox-only).
 const rowSelection = computed<RowSelectionOptions<Row>>(() =>
   conns.canWrite.value
     ? {

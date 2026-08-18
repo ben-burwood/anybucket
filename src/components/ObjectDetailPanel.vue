@@ -81,8 +81,7 @@ async function generatePresigned() {
   }
 }
 
-// Open a URL in the user's browser: the Tauri opener plugin on desktop, a plain
-// new tab on web.
+// Open a URL in the user's browser: the Tauri opener plugin on desktop, a plain new tab on web.
 function openInBrowser(url: string) {
   if (isTauri) {
     openUrl(url);
@@ -103,8 +102,8 @@ function download() {
 // --- Rename --------------------------------------------------------------
 
 // Rename = copy to the new key + delete the old one (a single-object move via
-// `transfer_objects`), so it needs delete rights. Only the live object can be
-// renamed — not a previous version or a delete marker.
+// `transfer_objects`), so it needs delete rights.
+// Only the live object can be renamed — not a previous version or a delete marker.
 const canRename = computed(
   () =>
     conns.canDelete.value &&
@@ -170,9 +169,9 @@ async function doRename() {
 
 // --- Delete --------------------------------------------------------------
 
-// Delete this object (its specific version when viewing one). Needs delete
-// rights; allowed for any row, including delete markers (removing a marker
-// restores the prior version).
+// Delete this object (its specific version when viewing one).
+// Needs delete rights; allowed for any row, including delete markers
+// (removing a marker restores the prior version).
 const deleting = ref(false);
 
 async function doDelete() {

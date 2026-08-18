@@ -56,10 +56,16 @@ fn build_router(state: SharedState, config: &Config) -> Router {
         .route("/health", get(handlers::health))
         // Connection management
         .route("/list_connections", post(handlers::list_connections))
-        .route("/get_active_connection", post(handlers::get_active_connection))
+        .route(
+            "/get_active_connection",
+            post(handlers::get_active_connection),
+        )
         .route("/save_connection", post(handlers::save_connection))
         .route("/delete_connection", post(handlers::delete_connection))
-        .route("/set_active_connection", post(handlers::set_active_connection))
+        .route(
+            "/set_active_connection",
+            post(handlers::set_active_connection),
+        )
         .route("/test_connection", post(handlers::test_connection))
         // Browsing (read-only)
         .route("/list_buckets", post(handlers::list_buckets))

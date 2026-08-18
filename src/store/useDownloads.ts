@@ -34,9 +34,8 @@ async function start(
   name: string,
   versionId?: string | null,
 ): Promise<void> {
-  // Web: the browser owns the download UI. Navigate to the server-proxied
-  // download URL (Content-Disposition: attachment) via an anchor click — no
-  // save dialog, no in-app progress toast.
+  // Web: the browser owns the download UI.
+  // Navigate to the server-proxied download URL (Content-Disposition: attachment) via an anchor click
   if (!isTauri) {
     const a = document.createElement("a");
     a.href = s3.downloadUrl(bucket, key, versionId);
