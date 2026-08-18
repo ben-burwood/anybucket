@@ -53,6 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn build_router(state: SharedState, config: &Config) -> Router {
     let api = Router::new()
+        .route("/health", get(handlers::health))
         // Connection management
         .route("/list_connections", post(handlers::list_connections))
         .route("/get_active_connection", post(handlers::get_active_connection))

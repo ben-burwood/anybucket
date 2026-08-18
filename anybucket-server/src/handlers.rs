@@ -42,6 +42,10 @@ pub type SharedState = Arc<Mutex<AppState>>;
 
 type ApiResult<T> = Result<Json<T>, ApiError>;
 
+pub async fn health() -> Json<serde_json::Value> {
+    Json(json!({ "status": "ok" }))
+}
+
 // ---------------------------------------------------------------------------
 // Request bodies (camelCase, matching the frontend `invoke` args)
 // ---------------------------------------------------------------------------
