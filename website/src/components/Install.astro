@@ -1,5 +1,18 @@
 ---
-import { LATEST_RELEASE_URL, RELEASES_URL, WINGET_ID, PLATFORMS } from '../consts';
+import {
+  LATEST_RELEASE_URL,
+  RELEASES_URL,
+  WINGET_ID,
+  PLATFORMS,
+  DOCKER_IMAGE,
+  GHCR_URL,
+  REPO_URL,
+} from '../consts';
+
+const DOCKER_RUN = `docker run -d -p 8080:8080 \\
+  -e ANYBUCKET_MASTER_KEY=$(openssl rand -hex 32) \\
+  -v anybucket-config:/config \\
+  ${DOCKER_IMAGE}`;
 
 const icons: Record<string, string> = {
   windows: '<path d="M0 3.4 9.8 2v9.3H0V3.4Zm10.9-1.6L24 0v11.2H10.9V1.8ZM0 12.5h9.8v9.3L0 20.5v-8Zm10.9 0H24V24l-13.1-1.8v-9.7Z"/>',
@@ -13,12 +26,14 @@ const icons: Record<string, string> = {
     <div class="mx-auto max-w-2xl text-center">
       <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">Install AnyBucket</h2>
       <p class="mt-4 text-lg text-ink-muted">
-        Free and open source. Download the build for your platform from the latest GitHub release —
+        Free and open source. Available as a native application or Docker image for web deployment —
         <span id="install-version" class="text-ink">the latest version</span>.
       </p>
     </div>
 
-    <div class="mt-12 grid gap-5 md:grid-cols-3">
+    <h3 class="mt-14 text-center text-sm font-semibold uppercase tracking-wide text-ink-faint">Desktop app</h3>
+
+    <div class="mt-6 grid gap-5 md:grid-cols-3">
       {PLATFORMS.map((p) => (
         <div
           data-platform={p.id}
@@ -81,5 +96,54 @@ const icons: Record<string, string> = {
       Looking for older versions? Browse
       <a href={RELEASES_URL} target="_blank" rel="noopener" class="text-brand-400 hover:underline">all releases</a>.
     </p>
+
+    <!-- Self-hosted web app -->
+    <h3
+      id="self-hosted"
+      class="mt-20 scroll-mt-20 text-center text-sm font-semibold uppercase tracking-wide text-ink-faint"
+    >
+      Self-hosted web app
+    </h3>
+
+    <div class="mx-auto mt-6 max-w-3xl rounded-xl border border-night-700 bg-night-900 p-6 sm:p-8">
+      <div class="flex items-start gap-4">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-500/15 text-brand-400">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
+            <path d="M4 4h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm3 2.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM4 14h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Zm3 2.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/>
+          </svg>
+        </div>
+        <div>
+          <h4 class="font-semibold">Run the same UI as a single container</h4>
+          <p class="mt-1.5 text-sm leading-relaxed text-ink-muted">
+            An <span class="text-ink">axum</span> server serves the SPA and performs all S3
+            operations server-side — the browser never talks to S3 directly. Published to the GitHub
+            Container Registry for <span class="text-ink">linux/amd64</span> and
+            <span class="text-ink">linux/arm64</span>.
+          </p>
+        </div>
+      </div>
+
+      <p class="mt-6 text-xs font-medium text-ink-muted">Start with Docker</p>
+      <div class="mt-1.5 flex items-start gap-2 rounded-md border border-night-700 bg-night-950 px-3 py-3 font-mono text-xs leading-relaxed">
+        <pre class="overflow-x-auto whitespace-pre text-ink">{DOCKER_RUN}</pre>
+        <button
+          type="button"
+          class="copy-btn ml-auto shrink-0 rounded px-1.5 py-0.5 text-ink-faint transition hover:bg-night-800 hover:text-ink"
+          data-copy={DOCKER_RUN}
+          aria-label="Copy command"
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M4 2a2 2 0 0 0-2 2v7h1.5V4a.5.5 0 0 1 .5-.5h6V2H4Z"/><path d="M6 5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 6 14h6a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 12 5H6Z"/></svg>
+        </button>
+      </div>
+
+      <div class="mt-4 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-200/90">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor" aria-hidden="true" class="mt-0.5 shrink-0 text-amber-400"><path d="M8.5 2.6a1.7 1.7 0 0 1 3 0l6.4 11a1.7 1.7 0 0 1-1.5 2.6H3.6a1.7 1.7 0 0 1-1.5-2.6l6.4-11ZM10 7a1 1 0 0 0-1 1v3a1 1 0 1 0 2 0V8a1 1 0 0 0-1-1Zm0 8.2a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2Z"/></svg>
+        <span>
+          There is <span class="font-semibold">no built-in auth</span> — run it behind a reverse
+          proxy that provides authentication and TLS. Set <span class="font-mono">ANYBUCKET_MASTER_KEY</span>
+          to encrypt stored secret keys at rest, and back it up alongside the config volume.
+        </span>
+      </div>
+    </div>
   </div>
 </section>
