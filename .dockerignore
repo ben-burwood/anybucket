@@ -5,6 +5,10 @@
 **/target
 .git
 
+# Secrets + local runtime state — must never enter the build context/image.
+.env
+config
+
 # Local dev stack + volumes
 dev
 website
