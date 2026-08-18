@@ -31,7 +31,7 @@ import { useConnections } from "../store/useConnections";
 import { useUploads } from "../store/useUploads";
 import { useBucketMetrics } from "../store/useBucketMetrics";
 import * as s3 from "../api/s3";
-import { isTauri } from "../platform";
+import { canAccessLocalFiles, isTauri } from "../platform";
 import { errorMessage, type ObjectItem } from "../types";
 import { fileType, formatDate, formatSize } from "../utils/format";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
@@ -603,9 +603,9 @@ async function runWithLimit<T>(
 let unlistenDrag: UnlistenFn | undefined;
 
 onMounted(async () => {
-  // Native OS path drag-drop is Tauri-only; the browser gets File-based
-  // drag-drop in Stage 4.
-  if (!isTauri) return;
+  // Native OS path drag-drop needs local-disk access; the browser gets
+  // File-based drag-drop in Stage 4 (see canAccessLocalFiles).
+  if (!canAccessLocalFiles) return;
   unlistenDrag = await getCurrentWebview().onDragDropEvent((event) => {
     const p = event.payload;
     if (p.type === "enter" || p.type === "over") {
@@ -682,9 +682,7 @@ const columnDefs = computed<ColDef<Row>[]>(() => {
       flex: 2,
       minWidth: 220,
       // Drag handle on write-capable connections; delete markers aren't copyable.
-      // Drag-to-move is a streaming transfer — desktop-only until Stage 3.
-      rowDrag: (p) =>
-        isTauri && conns.canWrite.value && !p.data?.object?.isDeleteMarker,
+      rowDrag: (p) => conns.canWrite.value && !p.data?.object?.isDeleteMarker,
       valueGetter: (p) => {
         const d = p.data;
         if (!d) return "";
@@ -733,9 +731,7 @@ const defaultColDef = computed<ColDef>(() => ({
 // row-body clicks still navigate / open detail via `onRowClicked` (selection is
 // checkbox-only).
 const rowSelection = computed<RowSelectionOptions<Row>>(() =>
-  // Multi-select drives the bulk copy/move/delete flows, which are streaming and
-  // hidden on web; fall back to single-row selection there until Stage 3.
-  isTauri && conns.canWrite.value
+  conns.canWrite.value
     ? {
         mode: "multiRow",
         checkboxes: true,
@@ -901,10 +897,8 @@ watch(
         </div>
 
         <div class="ml-auto flex shrink-0 items-center gap-2">
-          <!-- Copy/Move/Rename/Delete are streaming transfers — desktop-only
-               until Stage 3. -->
           <button
-            v-if="isTauri && conns.canWrite.value && selectedRows.length"
+            v-if="conns.canWrite.value && selectedRows.length"
             class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
             title="Copy the selected objects to another location"
             @click="openTransfer('copy')"
@@ -912,14 +906,14 @@ watch(
             📋 Copy ({{ selectedRows.length }})
           </button>
           <button
-            v-if="isTauri && conns.canDelete.value && selectedRows.length"
+            v-if="conns.canDelete.value && selectedRows.length"
             class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
             title="Move the selected objects to another location"
             @click="openTransfer('move')"
           >
             ✂ Move ({{ selectedRows.length }})
           </button>
-          <div v-if="isTauri && renameTarget" class="relative">
+          <div v-if="renameTarget" class="relative">
             <button
               class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
               title="Rename the selected object"
@@ -967,7 +961,7 @@ watch(
             </template>
           </div>
           <button
-            v-if="isTauri && conns.canDelete.value && selectedRows.length"
+            v-if="conns.canDelete.value && selectedRows.length"
             class="rounded border border-rose-300 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
             title="Delete the selected objects"
             @click="openDeleteModal"
@@ -1020,8 +1014,8 @@ watch(
               </div>
             </template>
           </div>
-          <!-- Upload streams file bytes from disk — desktop-only until Stage 4. -->
-          <div v-if="isTauri && conns.canWrite.value" class="relative">
+          <!-- Upload streams file bytes from local disk — see canAccessLocalFiles. -->
+          <div v-if="canAccessLocalFiles && conns.canWrite.value" class="relative">
             <button
               class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
               title="Upload files or a folder to this location"
@@ -1052,9 +1046,7 @@ watch(
               </div>
             </template>
           </div>
-          <!-- Bucket metrics run a full streaming scan — desktop-only until Stage 3. -->
           <button
-            v-if="isTauri"
             class="rounded border px-2 py-0.5 text-xs"
             :class="
               showMetrics
@@ -1084,7 +1076,7 @@ watch(
       </div>
 
       <!-- Bucket-wide metrics (size, object count) -->
-      <BucketMetricsPanel v-if="isTauri && showMetrics" :bucket="bucket" />
+      <BucketMetricsPanel v-if="showMetrics" :bucket="bucket" />
 
       <!-- Prefix filter (above the grid, aligned over the Name column) -->
       <div

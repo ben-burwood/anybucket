@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use std::convert::Infallible;
 
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::http::Request;
 use axum::response::{Html, IntoResponse};
 use axum::routing::post;
@@ -67,13 +67,20 @@ fn build_router(state: SharedState, config: &Config) -> Router {
         .route("/presign_get", post(handlers::presign_get))
         .route("/object_uris", post(handlers::object_uris))
         .route("/object_exists", post(handlers::object_exists))
-        .route("/create_folder", post(handlers::create_folder));
+        .route("/create_folder", post(handlers::create_folder))
+        // Streaming (NDJSON progress)
+        .route("/delete_objects", post(handlers::delete_objects))
+        .route("/transfer_objects", post(handlers::transfer_objects))
+        .route("/scan_bucket_metrics", post(handlers::scan_bucket_metrics));
 
     // Serve the built SPA; unknown paths fall back to index.html so client-side routing works on deep links / refreshes.
     // The fallback returns index.html with a 200 (ServeDir's own not-found path would serve it with a 404, which
     // makes deep links look like errors), so a refreshed deep link loads cleanly.
-    let index_html = std::fs::read_to_string(config.static_dir.join("index.html"))
-        .unwrap_or_else(|_| "<!doctype html><title>AnyBucket</title>".to_string());
+    // Read once at startup into `Bytes` so each fallback hit clones a cheap
+    // refcounted handle rather than copying the whole HTML body.
+    let index_html: Bytes = std::fs::read_to_string(config.static_dir.join("index.html"))
+        .unwrap_or_else(|_| "<!doctype html><title>AnyBucket</title>".to_string())
+        .into();
     let spa_fallback = service_fn(move |_req: Request<Body>| {
         let html = index_html.clone();
         async move { Ok::<_, Infallible>(Html(html).into_response()) }

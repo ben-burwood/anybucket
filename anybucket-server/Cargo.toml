@@ -21,6 +21,7 @@ tower-http = { version = "0.6", features = ["fs", "trace"] }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+tokio-stream = "0.1"
 
 # The cached client type threaded through core ops.
 aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
