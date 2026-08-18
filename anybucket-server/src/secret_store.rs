@@ -102,6 +102,11 @@ impl FileSecretStore {
         let nonce_bytes = B64
             .decode(&entry.nonce)
             .map_err(|e| AppError::Secret(format!("corrupt nonce: {e}")))?;
+        // AES-GCM nonces are 12 bytes; `Nonce::from_slice` panics on any other
+        // length, so reject a corrupt/tampered value gracefully first.
+        if nonce_bytes.len() != 12 {
+            return Err(AppError::Secret("corrupt nonce: wrong length".to_string()));
+        }
         let ct = B64
             .decode(&entry.ct)
             .map_err(|e| AppError::Secret(format!("corrupt ciphertext: {e}")))?;

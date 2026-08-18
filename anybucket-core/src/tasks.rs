@@ -173,50 +173,58 @@ pub async fn upload_object_from_stream(
         return ops::put_object(client, bucket, key, ByteStream::from(buf), content_type).await;
     }
 
-    // Otherwise multipart: read sequential PART_SIZE chunks from the stream. Each
-    // buffered part gives an exact Content-Length; memory stays bounded to one part.
+    // Unknown or large size: read the first part up front. If the whole stream
+    // fits in one part (a short read — including an empty body), single-PUT it.
+    // This avoids completing a multipart upload with a single 0-byte / short-only
+    // part, which some S3 implementations reject (EntityTooSmall).
+    let mut first = Vec::with_capacity(PART_SIZE as usize);
+    let read = (&mut reader)
+        .take(PART_SIZE)
+        .read_to_end(&mut first)
+        .await
+        .map_err(|e| AppError::Upload(e.to_string()))?;
+    if (read as u64) < PART_SIZE {
+        return ops::put_object(client, bucket, key, ByteStream::from(first), content_type).await;
+    }
+
+    // Bigger than one part: multipart, `first` becoming part 1.
     let upload_id = ops::create_multipart_upload(client, bucket, key, content_type).await?;
-    let parts = stream_parts_sequential(client, bucket, key, &upload_id, &mut reader).await;
+    let parts = stream_parts_sequential(client, bucket, key, &upload_id, first, &mut reader).await;
     finish_multipart(client, bucket, key, &upload_id, parts).await
 }
 
-/// Read `reader` in `PART_SIZE` chunks, uploading each as a part, until the
-/// stream ends. Returns the completed parts. A final short read ends the loop;
-/// an empty stream still produces one (empty) part so `complete` has ≥1 part.
+/// Upload `first` (already a full `PART_SIZE` chunk) as part 1, then keep reading
+/// `PART_SIZE` chunks and uploading them until the stream drains. Memory stays
+/// bounded to one part, and no empty trailing part is ever emitted.
 async fn stream_parts_sequential(
     client: &Client,
     bucket: &str,
     key: &str,
     upload_id: &str,
+    first: Vec<u8>,
     reader: &mut (impl AsyncRead + Send + Unpin),
 ) -> AppResult<Vec<CompletedPart>> {
     let mut parts: Vec<CompletedPart> = Vec::new();
+    let mut buf = first;
     let mut part_number: i32 = 1;
     loop {
-        let mut buf = Vec::with_capacity(PART_SIZE as usize);
-        // Reborrow each iteration so `take` doesn't move the `&mut` out of the loop.
-        let read = (&mut *reader)
-            .take(PART_SIZE)
-            .read_to_end(&mut buf)
-            .await
-            .map_err(|e| AppError::Upload(e.to_string()))?;
-
-        // Stop once the stream is drained — but always send at least one part so
-        // an empty upload still completes as a valid (zero-byte) object.
-        if read == 0 && !parts.is_empty() {
-            break;
-        }
-
         let completed =
             ops::upload_part(client, bucket, key, upload_id, part_number, ByteStream::from(buf))
                 .await?;
         parts.push(completed);
         part_number += 1;
 
-        // A short read means the stream ended with this part.
-        if (read as u64) < PART_SIZE {
-            break;
+        let mut next = Vec::with_capacity(PART_SIZE as usize);
+        // Reborrow each iteration so `take` doesn't move the `&mut` out of the loop.
+        let read = (&mut *reader)
+            .take(PART_SIZE)
+            .read_to_end(&mut next)
+            .await
+            .map_err(|e| AppError::Upload(e.to_string()))?;
+        if read == 0 {
+            break; // stream drained exactly at a part boundary — no trailing part
         }
+        buf = next;
     }
     Ok(parts)
 }

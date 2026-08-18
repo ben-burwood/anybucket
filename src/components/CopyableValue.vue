@@ -9,8 +9,6 @@ const copied = ref(false);
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 async function copy() {
-  // Desktop uses the Tauri clipboard plugin; the browser uses the async
-  // Clipboard API (available on the secure origins this app is served from).
   if (isTauri) {
     await writeText(props.value);
   } else {

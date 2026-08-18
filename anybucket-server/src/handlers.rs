@@ -407,7 +407,13 @@ pub async fn download_object(
         .or_else(|| ops::guess_content_type(&params.key).map(str::to_string))
         .unwrap_or_else(|| "application/octet-stream".to_string());
     let content_length = output.content_length();
-    let filename = params.key.rsplit('/').next().unwrap_or(&params.key);
+    // Last non-empty path segment; falls back to "download" for keys ending in
+    // "/" (folder markers) or an empty key, avoiding an empty attachment name.
+    let filename = params
+        .key
+        .rsplit('/')
+        .find(|s| !s.is_empty())
+        .unwrap_or("download");
 
     let mut builder = Response::builder()
         .header(header::CONTENT_TYPE, content_type)

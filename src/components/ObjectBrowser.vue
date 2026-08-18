@@ -210,16 +210,12 @@ async function confirmDelete() {
 
 // --- Copy / Move ---------------------------------------------------------
 
-// The destination picker drives its own `busy`/progress/error while the
-// transfer runs; it closes only on success.
 const pickerOpen = ref(false);
 const pickerMode = ref<"copy" | "move">("copy");
 const transferBusy = ref(false);
 const transferProgress = ref<string | null>(null);
 const transferError = ref<string | null>(null);
 
-// Full prefixes of any selected folders — the picker greys these out (a folder
-// can't be moved into itself or a descendant).
 const sourceFolderPrefixes = computed(() =>
   selectedRows.value
     .filter((r) => r.kind === "folder" && r.prefix != null)
@@ -289,7 +285,6 @@ async function executeTransfer(
     gridApi?.deselectAll();
     selectedRows.value = [];
     await refreshAfterMutation();
-    // Cross-bucket transfers changed the destination bucket too.
     if (destBucket !== props.bucket) {
       metricsCache.invalidate(conns.state.active?.id, destBucket);
     }
@@ -315,8 +310,7 @@ async function onDestinationConfirm(dest: { bucket: string; prefix: string }) {
 
 // --- Drag-and-drop (row → folder) ----------------------------------------
 
-// Dragging a row (or the whole selection) onto a folder row moves it there; an
-// Alt-drag copies instead. A small confirm modal precedes the transfer.
+// Dragging a row (or the whole selection) onto a folder row moves it there; an Alt-drag copies instead.
 const dragModalOpen = ref(false);
 const dragIsMove = ref(true);
 const dragRows = ref<Row[]>([]);
@@ -409,8 +403,7 @@ function setDragHighlight(rowId: string | null) {
 // --- Rename --------------------------------------------------------------
 
 // Toolbar rename: enabled only when exactly one current file is selected on a
-// delete-capable connection (rename = copy + delete of the old key). Same as the
-// side panel's rename, exposed as a compact popover for consistency.
+// delete-capable connection (rename = copy + delete of the old key).
 const renameTarget = computed<Row | null>(() => {
   if (!conns.canDelete.value || selectedRows.value.length !== 1) return null;
   const r = selectedRows.value[0];
@@ -486,19 +479,13 @@ async function submitRename() {
 // --- Uploads -------------------------------------------------------------
 
 const uploading = ref(false);
-// True while an OS drag is hovering the window (shows the drop overlay).
 const dragActive = ref(false);
-// Whether the Upload button's files/folder menu is open.
 const uploadMenuOpen = ref(false);
-// Hidden web file/folder picker (used only in the browser shell); its
-// `webkitdirectory` is toggled per pick to switch between files and a folder.
 const fileInput = ref<HTMLInputElement | null>(null);
 
-// Max concurrent uploads — a dropped folder can be hundreds of files, so we
-// cap in-flight PUTs rather than firing them all at once.
+// Max concurrent uploads — cap in-flight PUTs rather than firing them all at once.
 const UPLOAD_CONCURRENCY = 5;
-// Above this many files we skip the per-file existence check (which is one HEAD
-// each) and show a single generic overwrite warning instead.
+// Above this many files we skip the per-file existence check and show a single generic overwrite warning instead.
 const OVERWRITE_CHECK_LIMIT = 100;
 // Cap on concurrent existence probes (HEADs) when checking for overwrites.
 const OVERWRITE_PROBE_CONCURRENCY = 8;
