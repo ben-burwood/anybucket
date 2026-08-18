@@ -12,7 +12,7 @@ use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::CompletedPart;
 use aws_sdk_s3::Client;
 use aws_smithy_types::byte_stream::Length;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
@@ -143,6 +143,104 @@ pub async fn upload_object(
     result
 }
 
+/// Upload an object from an arbitrary byte stream (e.g. an HTTP request body)
+/// rather than a disk path — the web analogue of [`upload_object`]. Small bodies
+/// go up in one `PutObject`; larger ones stream through multipart, reading one
+/// `PART_SIZE` chunk into memory at a time (bounded regardless of total size).
+///
+/// `total` is the Content-Length when known: it selects single-shot vs multipart.
+/// When `None`, multipart is used and the loop simply runs until the stream ends.
+/// No progress sink — the browser measures upload progress client-side (XHR).
+///
+/// The caller must enforce the write gate before calling.
+pub async fn upload_object_from_stream(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    mut reader: impl AsyncRead + Send + Unpin,
+    total: Option<u64>,
+) -> AppResult<()> {
+    let content_type = ops::guess_content_type(key);
+
+    // Single-shot for known-small bodies: buffer the whole thing (≤ threshold)
+    // so the ByteStream carries an exact Content-Length, as the ops layer expects.
+    if let Some(n) = total.filter(|&n| n <= MULTIPART_THRESHOLD) {
+        let mut buf = Vec::with_capacity(n as usize); // exact size known — no regrowth
+        reader
+            .read_to_end(&mut buf)
+            .await
+            .map_err(|e| AppError::Upload(e.to_string()))?;
+        return ops::put_object(client, bucket, key, ByteStream::from(buf), content_type).await;
+    }
+
+    // Otherwise multipart: read sequential PART_SIZE chunks from the stream. Each
+    // buffered part gives an exact Content-Length; memory stays bounded to one part.
+    let upload_id = ops::create_multipart_upload(client, bucket, key, content_type).await?;
+    let parts = stream_parts_sequential(client, bucket, key, &upload_id, &mut reader).await;
+    finish_multipart(client, bucket, key, &upload_id, parts).await
+}
+
+/// Read `reader` in `PART_SIZE` chunks, uploading each as a part, until the
+/// stream ends. Returns the completed parts. A final short read ends the loop;
+/// an empty stream still produces one (empty) part so `complete` has ≥1 part.
+async fn stream_parts_sequential(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+    reader: &mut (impl AsyncRead + Send + Unpin),
+) -> AppResult<Vec<CompletedPart>> {
+    let mut parts: Vec<CompletedPart> = Vec::new();
+    let mut part_number: i32 = 1;
+    loop {
+        let mut buf = Vec::with_capacity(PART_SIZE as usize);
+        // Reborrow each iteration so `take` doesn't move the `&mut` out of the loop.
+        let read = (&mut *reader)
+            .take(PART_SIZE)
+            .read_to_end(&mut buf)
+            .await
+            .map_err(|e| AppError::Upload(e.to_string()))?;
+
+        // Stop once the stream is drained — but always send at least one part so
+        // an empty upload still completes as a valid (zero-byte) object.
+        if read == 0 && !parts.is_empty() {
+            break;
+        }
+
+        let completed =
+            ops::upload_part(client, bucket, key, upload_id, part_number, ByteStream::from(buf))
+                .await?;
+        parts.push(completed);
+        part_number += 1;
+
+        // A short read means the stream ended with this part.
+        if (read as u64) < PART_SIZE {
+            break;
+        }
+    }
+    Ok(parts)
+}
+
+/// Complete a multipart upload from a parts result, aborting (best-effort) on any
+/// failure — of the part uploads or the completion itself — so no dangling parts
+/// are left behind. Shared by the disk-path and stream-source multipart uploads.
+async fn finish_multipart(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+    parts: AppResult<Vec<CompletedPart>>,
+) -> AppResult<()> {
+    let outcome = match parts {
+        Ok(parts) => ops::complete_multipart_upload(client, bucket, key, upload_id, parts).await,
+        Err(e) => Err(e),
+    };
+    if outcome.is_err() {
+        let _ = ops::abort_multipart_upload(client, bucket, key, upload_id).await;
+    }
+    outcome
+}
+
 /// PUT the file in one request, streamed from disk by the SDK (no whole-file buffering in memory).
 async fn upload_single(
     client: &Client,
@@ -169,20 +267,8 @@ async fn upload_multipart(
     reporter: &UploadReporter,
 ) -> AppResult<()> {
     let upload_id = ops::create_multipart_upload(client, bucket, key, content_type).await?;
-
-    let parts = match stream_parts(client, bucket, key, &upload_id, src_path, reporter).await {
-        Ok(parts) => parts,
-        Err(e) => {
-            let _ = ops::abort_multipart_upload(client, bucket, key, &upload_id).await;
-            return Err(e);
-        }
-    };
-
-    if let Err(e) = ops::complete_multipart_upload(client, bucket, key, &upload_id, parts).await {
-        let _ = ops::abort_multipart_upload(client, bucket, key, &upload_id).await;
-        return Err(e);
-    }
-    Ok(())
+    let parts = stream_parts(client, bucket, key, &upload_id, src_path, reporter).await;
+    finish_multipart(client, bucket, key, &upload_id, parts).await
 }
 
 /// Upload each part as a byte range streamed straight from disk by the SDK, returning the completed parts.

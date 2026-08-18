@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { canAccessLocalFiles, isTauri } from "../platform";
+import { isTauri } from "../platform";
 import * as s3 from "../api/s3";
 import { useDownloads } from "../store/useDownloads";
 import { useConnections } from "../store/useConnections";
@@ -379,19 +379,17 @@ onMounted(loadDetails);
         {{ deleting ? "Deleting…" : "🗑 Delete" }}
       </button>
 
-      <!-- Download streams to local disk via native save — see canAccessLocalFiles. -->
-      <template v-if="canAccessLocalFiles">
-        <button
-          v-if="!object.isDeleteMarker"
-          class="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-          @click="download"
-        >
-          ⬇ Download
-        </button>
-        <p v-else class="text-center text-xs text-slate-400">
-          Delete marker — no content to download.
-        </p>
-      </template>
+      <!-- Download: native save-stream on desktop, browser download on web. -->
+      <button
+        v-if="!object.isDeleteMarker"
+        class="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+        @click="download"
+      >
+        ⬇ Download
+      </button>
+      <p v-else class="text-center text-xs text-slate-400">
+        Delete marker — no content to download.
+      </p>
     </footer>
   </aside>
 </template>

@@ -82,8 +82,8 @@ function onTitlebarDblClick(e: MouseEvent) {
       </main>
     </div>
 
+    <UploadToasts />
     <DownloadToasts v-if="isTauri" />
-    <UploadToasts v-if="isTauri" />
     <WindowResizers v-if="isTauri" />
   </div>
 </template>

@@ -1,6 +1,7 @@
 import { reactive } from "vue";
 import { save } from "@tauri-apps/plugin-dialog";
 import * as s3 from "../api/s3";
+import { isTauri } from "../platform";
 import { errorMessage } from "../types";
 import { AUTO_DISMISS_MS } from "../constants";
 
@@ -33,6 +34,19 @@ async function start(
   name: string,
   versionId?: string | null,
 ): Promise<void> {
+  // Web: the browser owns the download UI. Navigate to the server-proxied
+  // download URL (Content-Disposition: attachment) via an anchor click — no
+  // save dialog, no in-app progress toast.
+  if (!isTauri) {
+    const a = document.createElement("a");
+    a.href = s3.downloadUrl(bucket, key, versionId);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return;
+  }
+
   const dest = await save({ defaultPath: name });
   if (!dest) return; // user cancelled the dialog
 

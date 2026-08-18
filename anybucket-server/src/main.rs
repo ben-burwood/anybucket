@@ -10,7 +10,7 @@ use std::convert::Infallible;
 use axum::body::{Body, Bytes};
 use axum::http::Request;
 use axum::response::{Html, IntoResponse};
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::Router;
 use tokio::sync::Mutex;
 use tower::service_fn;
@@ -71,7 +71,10 @@ fn build_router(state: SharedState, config: &Config) -> Router {
         // Streaming (NDJSON progress)
         .route("/delete_objects", post(handlers::delete_objects))
         .route("/transfer_objects", post(handlers::transfer_objects))
-        .route("/scan_bucket_metrics", post(handlers::scan_bucket_metrics));
+        .route("/scan_bucket_metrics", post(handlers::scan_bucket_metrics))
+        // Raw-body upload + streamed download (browser filesystem reroute)
+        .route("/objects/upload", post(handlers::upload_object))
+        .route("/objects/download", get(handlers::download_object));
 
     // Serve the built SPA; unknown paths fall back to index.html so client-side routing works on deep links / refreshes.
     // The fallback returns index.html with a 200 (ServeDir's own not-found path would serve it with a 404, which

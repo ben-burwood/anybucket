@@ -9,18 +9,21 @@
 
 use std::convert::Infallible;
 use std::future::Future;
+use std::io;
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::State;
-use axum::http::header;
+use axum::extract::{Query, State};
+use axum::http::{header, HeaderMap};
 use axum::response::Response;
 use axum::Json;
+use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::StreamExt;
+use tokio_util::io::StreamReader;
 
 use anybucket_core::connections::{Connection, ConnectionInput};
 use anybucket_core::constants::DEFAULT_PRESIGN_SECS;
@@ -135,6 +138,24 @@ pub struct TransferObjectsReq {
 #[serde(rename_all = "camelCase")]
 pub struct ScanBucketMetricsReq {
     pub bucket: String,
+}
+
+/// Query params for the raw-body upload endpoint (`?bucket=&key=`).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadParams {
+    pub bucket: String,
+    pub key: String,
+}
+
+/// Query params for the download endpoint (`?bucket=&key=[&versionId=]`).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadParams {
+    pub bucket: String,
+    pub key: String,
+    #[serde(default)]
+    pub version_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -334,6 +355,99 @@ pub async fn scan_bucket_metrics(
     Ok(ndjson_response(move |sink| async move {
         tasks::scan_bucket_metrics(&client, &req.bucket, sink).await
     }))
+}
+
+// ---------------------------------------------------------------------------
+// Object transfer (raw HTTP body / stream) — the browser's filesystem reroute.
+// Upload progress is measured client-side (XHR), and download is owned by the
+// browser, so neither uses the NDJSON progress channel.
+// ---------------------------------------------------------------------------
+
+/// Upload an object from the raw request body (a browser `File`), streaming it
+/// into S3 without buffering the whole file. Requires a writable connection.
+pub async fn upload_object(
+    State(state): State<SharedState>,
+    Query(params): Query<UploadParams>,
+    headers: HeaderMap,
+    body: Body,
+) -> ApiResult<()> {
+    let client = writable_client(&state).await?;
+    let total = headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok());
+    // Take the raw `Body` (not `Bytes`) so axum's default body-size limit does
+    // not apply; adapt it to an `AsyncRead` for core.
+    let reader = StreamReader::new(body.into_data_stream().map(|r| r.map_err(io::Error::other)));
+    tasks::upload_object_from_stream(&client, &params.bucket, &params.key, reader, total).await?;
+    Ok(Json(()))
+}
+
+/// Stream an S3 object straight through the response as an attachment download.
+pub async fn download_object(
+    State(state): State<SharedState>,
+    Query(params): Query<DownloadParams>,
+) -> Result<Response, ApiError> {
+    let client = client_for_active(&state).await?;
+    let output = ops::get_object_stream(
+        &client,
+        &params.bucket,
+        &params.key,
+        params.version_id.as_deref(),
+    )
+    .await?;
+
+    let content_type = output
+        .content_type()
+        .map(str::to_string)
+        .or_else(|| ops::guess_content_type(&params.key).map(str::to_string))
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+    let content_length = output.content_length();
+    let filename = params.key.rsplit('/').next().unwrap_or(&params.key);
+
+    let mut builder = Response::builder()
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CONTENT_DISPOSITION, content_disposition(filename));
+    if let Some(len) = content_length.filter(|&l| l >= 0) {
+        builder = builder.header(header::CONTENT_LENGTH, len);
+    }
+    // Zero-copy: hand the S3 body (an http-body 1.x `SdkBody`) straight to axum.
+    builder
+        .body(Body::new(output.body.into_inner()))
+        .map_err(|e| ApiError(anybucket_core::error::AppError::Other(e.to_string())))
+}
+
+/// The complement of RFC 5987 `attr-char`: percent-encode everything that isn't
+/// `ALPHA / DIGIT / !#$&+-.^_`|~` for a `filename*` value.
+const RFC5987: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'!')
+    .remove(b'#')
+    .remove(b'$')
+    .remove(b'&')
+    .remove(b'+')
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'^')
+    .remove(b'_')
+    .remove(b'`')
+    .remove(b'|')
+    .remove(b'~');
+
+/// A `Content-Disposition: attachment` value with an ASCII-safe `filename` plus
+/// an RFC 5987 `filename*` so non-ASCII object names download correctly.
+fn content_disposition(name: &str) -> String {
+    let ascii: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii() && c != '"' && c != '\\' && !c.is_control() {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let encoded = utf8_percent_encode(name, RFC5987);
+    format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{encoded}")
 }
 
 // ---------------------------------------------------------------------------

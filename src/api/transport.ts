@@ -25,9 +25,10 @@ class WebChannel<T> {
 /**
  * A client-side failure shaped like core's `AppError`, so callers handle it the
  * same way whether it came from the server or from the transport. `kind` is
- * `"other"` to match `AppError::Other` in `anybucket-core/src/error.rs`.
+ * `"other"` to match `AppError::Other` in `anybucket-core/src/error.rs`. Exported
+ * so other web transports (e.g. the XHR upload in `s3.ts`) reuse the one shape.
  */
-function appError(message: string): AppError {
+export function appError(message: string): AppError {
   return { kind: "other", message };
 }
 

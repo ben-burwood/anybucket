@@ -31,9 +31,14 @@ import { useConnections } from "../store/useConnections";
 import { useUploads } from "../store/useUploads";
 import { useBucketMetrics } from "../store/useBucketMetrics";
 import * as s3 from "../api/s3";
-import { canAccessLocalFiles, isTauri } from "../platform";
+import { isTauri } from "../platform";
 import { errorMessage, type ObjectItem } from "../types";
 import { fileType, formatDate, formatSize } from "../utils/format";
+import {
+  filesFromDataTransfer,
+  filesFromInput,
+  type WebUploadEntry,
+} from "../utils/webUpload";
 import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
 import ConfirmModal from "./ConfirmModal.vue";
@@ -485,6 +490,9 @@ const uploading = ref(false);
 const dragActive = ref(false);
 // Whether the Upload button's files/folder menu is open.
 const uploadMenuOpen = ref(false);
+// Hidden web file/folder picker (used only in the browser shell); its
+// `webkitdirectory` is toggled per pick to switch between files and a folder.
+const fileInput = ref<HTMLInputElement | null>(null);
 
 // Max concurrent uploads — a dropped folder can be hundreds of files, so we
 // cap in-flight PUTs rather than firing them all at once.
@@ -502,27 +510,39 @@ const OVERWRITE_PROBE_CONCURRENCY = 8;
  */
 async function pickAndUpload(directory: boolean) {
   uploadMenuOpen.value = false;
-  const selection = await open({ multiple: true, directory });
-  if (!selection) return;
-  await uploadFiles(Array.isArray(selection) ? selection : [selection]);
+  if (isTauri) {
+    const selection = await open({ multiple: true, directory });
+    if (!selection) return;
+    await uploadFiles(Array.isArray(selection) ? selection : [selection]);
+  } else if (fileInput.value) {
+    // Web: switch the hidden <input> between files and folder, then open it;
+    // upload happens on its change event.
+    fileInput.value.webkitdirectory = directory;
+    fileInput.value.click();
+  }
 }
 
+/** Web file/folder picker change handler → upload the chosen `File`s. */
+async function onWebPick(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const entries = filesFromInput(input);
+  input.value = ""; // reset so re-picking the same selection fires change again
+  await uploadFilesWeb(entries);
+}
+
+/** One file queued for upload: its source (disk path or browser File) + placement. */
+type UploadSource = { source: string | File; relKey: string; size: number };
+
 /**
- * Expand dropped/picked `paths` (files or folders) into their files, warn before
- * overwriting, upload them (structure preserved, concurrency-capped), then
- * refresh the listing + metrics.
+ * Shared upload orchestrator (both shells): key each source under the current
+ * prefix, warn before overwriting, upload concurrency-capped, then refresh.
+ * `uploads.start` picks the disk-path vs File transport from the source type.
  */
-async function uploadFiles(paths: string[]) {
-  if (!conns.canWrite.value || paths.length === 0 || uploading.value) return;
+async function uploadSources(sources: UploadSource[]) {
+  if (!conns.canWrite.value || sources.length === 0 || uploading.value) return;
   uploading.value = true;
   try {
-    const entries = await s3.expandUploadPaths(paths);
-    const files = entries.map((e) => ({
-      ...e,
-      key: `${props.prefix}${e.relKey}`,
-    }));
-    if (files.length === 0) return;
-
+    const files = sources.map((s) => ({ ...s, key: `${props.prefix}${s.relKey}` }));
     if (
       !(await confirmOverwrite(
         props.bucket,
@@ -534,13 +554,50 @@ async function uploadFiles(paths: string[]) {
 
     // Concurrency-capped upload; `uploads.start` resolves per file (never throws).
     await runWithLimit(files, UPLOAD_CONCURRENCY, (f) =>
-      uploads.start(props.bucket, f.key, f.srcPath, f.relKey, f.size),
+      uploads.start(props.bucket, f.key, f.source, f.relKey, f.size),
     );
 
     await refreshAfterMutation();
   } finally {
     uploading.value = false;
   }
+}
+
+/** Web: upload enumerated browser `File`s (from the picker or drag-drop). */
+function uploadFilesWeb(entries: WebUploadEntry[]) {
+  return uploadSources(
+    entries.map((e) => ({ source: e.file, relKey: e.relKey, size: e.file.size })),
+  );
+}
+
+// Web drag-drop (files + folders) — desktop uses the native webview event below.
+function onWebDragOver(e: DragEvent) {
+  if (isTauri) return;
+  e.preventDefault();
+  if (conns.canWrite.value) dragActive.value = true;
+}
+function onWebDragLeave() {
+  if (isTauri) return;
+  dragActive.value = false;
+}
+async function onWebDrop(e: DragEvent) {
+  if (isTauri) return;
+  e.preventDefault();
+  dragActive.value = false;
+  if (!conns.canWrite.value || !e.dataTransfer) return;
+  await uploadFilesWeb(await filesFromDataTransfer(e.dataTransfer));
+}
+
+/**
+ * Desktop: expand dropped/picked disk `paths` (files or folders) into their files
+ * (structure preserved), then hand them to the shared uploader.
+ */
+async function uploadFiles(paths: string[]) {
+  if (paths.length === 0) return;
+  const entries = await s3.expandUploadPaths(paths);
+  await uploadSources(
+    entries.map((e) => ({ source: e.srcPath, relKey: e.relKey, size: e.size })),
+  );
 }
 
 /**
@@ -603,9 +660,9 @@ async function runWithLimit<T>(
 let unlistenDrag: UnlistenFn | undefined;
 
 onMounted(async () => {
-  // Native OS path drag-drop needs local-disk access; the browser gets
-  // File-based drag-drop in Stage 4 (see canAccessLocalFiles).
-  if (!canAccessLocalFiles) return;
+  // Native OS path drag-drop is Tauri-only; the browser uses DOM drag-drop
+  // (onWebDrop) with File objects instead.
+  if (!isTauri) return;
   unlistenDrag = await getCurrentWebview().onDragDropEvent((event) => {
     const p = event.payload;
     if (p.type === "enter" || p.type === "over") {
@@ -830,7 +887,15 @@ watch(
 <template>
   <div class="flex h-full">
     <!-- Main browser -->
-    <div class="relative flex min-w-0 flex-1 flex-col">
+    <div
+      class="relative flex min-w-0 flex-1 flex-col"
+      @dragover="onWebDragOver"
+      @dragleave="onWebDragLeave"
+      @drop="onWebDrop"
+    >
+      <!-- Hidden web file/folder picker (browser shell only); webkitdirectory is
+           toggled in pickAndUpload to switch between files and a folder. -->
+      <input ref="fileInput" type="file" multiple class="hidden" @change="onWebPick" />
       <!-- Drag-and-drop overlay (read-write only) -->
       <div
         v-if="dragActive"
@@ -1014,8 +1079,8 @@ watch(
               </div>
             </template>
           </div>
-          <!-- Upload streams file bytes from local disk — see canAccessLocalFiles. -->
-          <div v-if="canAccessLocalFiles && conns.canWrite.value" class="relative">
+          <!-- Upload: disk-path stream on desktop, File POST on web. -->
+          <div v-if="conns.canWrite.value" class="relative">
             <button
               class="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
               title="Upload files or a folder to this location"
