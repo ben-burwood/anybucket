@@ -1,10 +1,5 @@
 use serde::Serialize;
 
-/// Application-wide error type.
-///
-/// All variants serialize to a flat `{ kind, message }` shape so the frontend
-/// can branch on `kind` (e.g. show a "no active connection" prompt) while still
-/// having a human-readable `message`.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("no active connection is selected")]
@@ -16,8 +11,8 @@ pub enum AppError {
     #[error("missing credentials for connection: {0}")]
     MissingCredentials(String),
 
-    #[error("keychain error: {0}")]
-    Keychain(String),
+    #[error("secret store error: {0}")]
+    Secret(String),
 
     #[error("configuration error: {0}")]
     Config(String),
@@ -59,7 +54,7 @@ impl AppError {
             AppError::NoActiveConnection => "no_active_connection",
             AppError::ConnectionNotFound(_) => "connection_not_found",
             AppError::MissingCredentials(_) => "missing_credentials",
-            AppError::Keychain(_) => "keychain",
+            AppError::Secret(_) => "secret",
             AppError::Config(_) => "config",
             AppError::S3(_) => "s3",
             AppError::Unsupported(_) => "unsupported",
@@ -90,10 +85,6 @@ impl Serialize for AppError {
 pub type AppResult<T> = Result<T, AppError>;
 
 // Convenience conversion for the AWS SDK's `SdkError<E, R>`.
-//
-// `DisplayErrorContext` walks the full source chain, so the message includes the
-// underlying service error (e.g. "NoSuchBucket") rather than just the generic
-// dispatch wrapper.
 impl<E, R> From<aws_smithy_runtime_api::client::result::SdkError<E, R>> for AppError
 where
     E: std::error::Error + Send + Sync + 'static,
@@ -101,12 +92,6 @@ where
 {
     fn from(err: aws_smithy_runtime_api::client::result::SdkError<E, R>) -> Self {
         AppError::S3(aws_smithy_types::error::display::DisplayErrorContext(&err).to_string())
-    }
-}
-
-impl From<keyring::Error> for AppError {
-    fn from(err: keyring::Error) -> Self {
-        AppError::Keychain(err.to_string())
     }
 }
 

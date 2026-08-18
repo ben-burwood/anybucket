@@ -1,0 +1,33 @@
+[package]
+name = "anybucket-core"
+description = "Shared S3 core for AnyBucket (Tauri desktop + web server)"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "anybucket_core"
+
+[dependencies]
+# S3 / AWS
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
+aws-credential-types = "1"
+aws-smithy-types = { version = "1", features = ["http-body-1-x"] }
+aws-smithy-runtime-api = "1"
+
+# Async + streaming
+tokio = { version = "1", features = ["fs", "io-util", "sync"] }
+http-body = "1"
+bytes = "1"
+pin-project-lite = "0.2"
+
+# Serialization + models
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+url = "2"
+percent-encoding = "2"

@@ -3,7 +3,9 @@
 //!
 //! The SDK polls the upload body lazily as it writes to the socket, so tallying each data frame in
 //!  [`ProgressBody::poll_frame`] tracks bytes actually handed to the HTTP layer.
-//! Progress is emitted on a Tauri channel, throttled to `step` bytes so we don't flood the IPC channel.
+//! Progress is emitted through a [`ProgressSink`], throttled to `step` bytes so we don't flood the transport.
+//!
+//! [`ProgressSink`]: crate::ProgressSink
 //!
 //! [`ByteStream`]: aws_sdk_s3::primitives::ByteStream
 
@@ -17,9 +19,9 @@ use aws_smithy_types::body::SdkBody;
 use bytes::Bytes;
 use http_body::{Body, Frame, SizeHint};
 use pin_project_lite::pin_project;
-use tauri::ipc::Channel;
 
 use crate::models::UploadProgress;
+use crate::ProgressSink;
 
 /// Tracks one upload's absolute byte progress and emits throttled events.
 /// Its [`wrap`](Self::wrap) turns any file-backed `ByteStream` into a counting one;
@@ -29,17 +31,17 @@ pub struct UploadReporter {
     uploaded: Arc<AtomicU64>,
     total: u64,
     key: String,
-    chan: Channel<UploadProgress>,
+    sink: ProgressSink<UploadProgress>,
     step: u64,
 }
 
 impl UploadReporter {
-    pub fn new(total: u64, key: String, chan: Channel<UploadProgress>, step: u64) -> Self {
+    pub fn new(total: u64, key: String, sink: ProgressSink<UploadProgress>, step: u64) -> Self {
         Self {
             uploaded: Arc::new(AtomicU64::new(0)),
             total,
             key,
-            chan,
+            sink,
             step,
         }
     }
@@ -56,7 +58,7 @@ impl UploadReporter {
         let uploaded = self.uploaded.clone();
         let total = self.total;
         let key = self.key.clone();
-        let chan = self.chan.clone();
+        let sink = self.sink.clone();
         let step = self.step;
         let body = inner.into_inner().map_preserve_contents(move |b| {
             SdkBody::from_body_1_x(ProgressBody {
@@ -64,7 +66,7 @@ impl UploadReporter {
                 uploaded: uploaded.clone(),
                 total,
                 key: key.clone(),
-                chan: chan.clone(),
+                sink: sink.clone(),
                 step,
             })
         });
@@ -82,7 +84,7 @@ pin_project! {
         uploaded: Arc<AtomicU64>,
         total: u64,
         key: String,
-        chan: Channel<UploadProgress>,
+        sink: ProgressSink<UploadProgress>,
         step: u64,
     }
 }
@@ -112,7 +114,7 @@ where
                         // this may briefly overshoot — harmless: the UI clamps to
                         // 100% and the terminal `done` event resets the total.
                         if sent / *this.step != prev / *this.step {
-                            let _ = this.chan.send(UploadProgress {
+                            (this.sink)(UploadProgress {
                                 key: this.key.clone(),
                                 uploaded: sent,
                                 total: *this.total,

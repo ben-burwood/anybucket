@@ -4,8 +4,7 @@ use crate::connections::{AccessMode, Connection, ConnectionStore};
 use crate::error::{AppError, AppResult};
 use crate::s3;
 
-/// Shared, mutex-guarded application state. Managed by Tauri and accessed from
-/// commands via `State<'_, tokio::sync::Mutex<AppState>>`.
+/// Shared, mutex-guarded application state.
 pub struct AppState {
     pub store: ConnectionStore,
     /// Cached client keyed by the connection id it was built for, so we only
@@ -21,12 +20,8 @@ impl AppState {
         }
     }
 
-    /// The currently active connection, or an error prompting the UI to pick one.
     pub fn active_connection(&self) -> AppResult<Connection> {
-        let id = self
-            .store
-            .active_id()
-            .ok_or(AppError::NoActiveConnection)?;
+        let id = self.store.active_id().ok_or(AppError::NoActiveConnection)?;
         self.store.get(id).cloned()
     }
 
@@ -59,8 +54,23 @@ impl AppState {
         Ok(client)
     }
 
-    /// Drop the cached client, e.g. after the active connection is changed or
-    /// its credentials are edited.
+    /// Gate for writes, then return the active client — the capability→client
+    /// mapping both shells share, in a single lock.
+    /// Fails if the active connection is read-only.
+    pub async fn writable_client(&mut self) -> AppResult<Client> {
+        self.require_writable()?;
+        self.active_client().await
+    }
+
+    /// Gate for deletes, then return the active client.
+    /// Fails unless the active connection permits deletes.
+    /// (`ReadWriteDelete` implies write access, so this also covers a move's write requirement.)
+    pub async fn deletable_client(&mut self) -> AppResult<Client> {
+        self.require_deletable()?;
+        self.active_client().await
+    }
+
+    /// Drop the cached client, e.g. after the active connection is changed or its credentials are edited.
     pub fn invalidate_client(&mut self) {
         self.client_cache = None;
     }

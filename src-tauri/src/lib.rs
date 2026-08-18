@@ -1,15 +1,12 @@
 mod commands;
-mod connections;
-mod error;
-mod models;
-mod s3;
-mod state;
+mod secret_store;
 
 use tauri::Manager;
 use tokio::sync::Mutex;
 
-use connections::ConnectionStore;
-use state::AppState;
+use anybucket_core::connections::ConnectionStore;
+use anybucket_core::state::AppState;
+use secret_store::KeyringStore;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,7 +18,7 @@ pub fn run() {
             // Connection metadata lives under the OS app-config dir; secrets are
             // kept in the keychain (see connections module).
             let config_dir = app.path().app_config_dir()?;
-            let store = ConnectionStore::load(&config_dir)?;
+            let store = ConnectionStore::load(&config_dir, Box::new(KeyringStore))?;
             app.manage(Mutex::new(AppState::new(store)));
             Ok(())
         })
