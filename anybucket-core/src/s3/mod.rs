@@ -11,11 +11,6 @@ use crate::connections::Connection;
 use crate::error::{AppError, AppResult};
 
 /// Build an S3 client for a connection.
-///
-/// This is the single place provider differences are absorbed: a custom
-/// `endpoint_url`, an arbitrary `region`, and the `force_path_style` toggle that
-/// MinIO / Garage / RustFS require. Real AWS uses no endpoint override and
-/// virtual-hosted-style addressing.
 pub async fn build_client(conn: &Connection, secret: &str) -> AppResult<Client> {
     let creds = Credentials::new(
         conn.access_key_id.clone(),
@@ -46,9 +41,8 @@ pub fn s3_uri(bucket: &str, key: &str) -> String {
     format!("s3://{bucket}/{key}")
 }
 
-/// A browser-openable HTTPS URL for an object, honouring the connection's
-/// endpoint and addressing style. When `version_id` is set, a `?versionId=`
-/// query is appended.
+/// A browser-openable HTTPS URL for an object, honouring the connection's endpoint and addressing style.
+/// When `version_id` is set, a `?versionId=` query is appended.
 pub fn https_url(
     conn: &Connection,
     bucket: &str,
@@ -85,14 +79,9 @@ fn encode_key(key: &str) -> String {
     let mut out = String::with_capacity(key.len());
     for b in key.bytes() {
         match b {
-            b'A'..=b'Z'
-            | b'a'..=b'z'
-            | b'0'..=b'9'
-            | b'-'
-            | b'_'
-            | b'.'
-            | b'~'
-            | b'/' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }

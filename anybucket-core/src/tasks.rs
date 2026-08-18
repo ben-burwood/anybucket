@@ -1,9 +1,9 @@
-//! Higher-level, progress-reporting operations that orchestrate the [`ops`] layer.
+//! Higher-level operations that orchestrate the [`ops`] layer.
+//! Most stream progress; a few (e.g. [`create_folder`]) are one-shot but still live here
+//! because they carry shared policy both shells must run identically.
 //!
-//! These were previously the bodies of the Tauri commands. They are now
-//! transport-agnostic: each takes an `&Client` and a [`ProgressSink`], emitting
-//! the same progress and terminal events the UI already expects. Both shells
-//! (desktop and server) call these and back the sink with their own transport.
+//! They are transport-agnostic: the streaming ones take an `&Client` and a
+//! [`ProgressSink`], emitting the progress and terminal events.
 //!
 //! Access-mode gating (`require_writable` / `require_deletable`) stays with the
 //! caller — it needs the shell's locked [`crate::state::AppState`].
@@ -26,8 +26,8 @@ use crate::ProgressSink;
 /// Emit progress at most every 256 KiB to avoid flooding the transport.
 const PROGRESS_STEP: u64 = 256 * 1024;
 
-/// Files at or below this size go up in a single `PutObject`; larger files use
-/// multipart. Also the per-part size (≥ S3's 5 MiB minimum).
+/// Files at or below this size go up in a single `PutObject`; larger files use multipart.
+/// Also the per-part size (≥ S3's 5 MiB minimum).
 const MULTIPART_THRESHOLD: u64 = 16 * 1024 * 1024;
 const PART_SIZE: u64 = 16 * 1024 * 1024;
 
@@ -55,6 +55,15 @@ pub async fn download_object(
     let mut downloaded: u64 = 0;
     let mut last_emitted: u64 = 0;
 
+    // Same event shape every time; only the running count, done flag, and error vary.
+    let event = |downloaded, done, error| DownloadProgress {
+        key: key.to_string(),
+        downloaded,
+        total,
+        done,
+        error,
+    };
+
     loop {
         match body.try_next().await {
             Ok(Some(chunk)) => {
@@ -62,38 +71,20 @@ pub async fn download_object(
                 downloaded += chunk.len() as u64;
                 if downloaded - last_emitted >= PROGRESS_STEP {
                     last_emitted = downloaded;
-                    on_progress(DownloadProgress {
-                        key: key.to_string(),
-                        downloaded,
-                        total,
-                        done: false,
-                        error: None,
-                    });
+                    on_progress(event(downloaded, false, None));
                 }
             }
             Ok(None) => break,
             Err(e) => {
                 let msg = e.to_string();
-                on_progress(DownloadProgress {
-                    key: key.to_string(),
-                    downloaded,
-                    total,
-                    done: true,
-                    error: Some(msg.clone()),
-                });
+                on_progress(event(downloaded, true, Some(msg.clone())));
                 return Err(AppError::Download(msg));
             }
         }
     }
 
     file.flush().await?;
-    on_progress(DownloadProgress {
-        key: key.to_string(),
-        downloaded,
-        total,
-        done: true,
-        error: None,
-    });
+    on_progress(event(downloaded, true, None));
     Ok(())
 }
 
@@ -101,8 +92,8 @@ pub async fn download_object(
 // Uploads
 // ---------------------------------------------------------------------------
 
-/// Upload a local file at `src_path` to `bucket/key`, streaming throttled
-/// progress. Small files go up in one `PutObject`; large files use multipart.
+/// Upload a local file at `src_path` to `bucket/key`, streaming throttled progress.
+/// Small files go up in one `PutObject`; large files use multipart.
 ///
 /// The caller must enforce the write gate before calling.
 pub async fn upload_object(
@@ -219,18 +210,23 @@ async fn stream_parts(
             .await
             .map_err(|e| AppError::Upload(e.to_string()))?;
 
-        let completed =
-            ops::upload_part(client, bucket, key, upload_id, (i + 1) as i32, reporter.wrap(file))
-                .await?;
+        let completed = ops::upload_part(
+            client,
+            bucket,
+            key,
+            upload_id,
+            (i + 1) as i32,
+            reporter.wrap(file),
+        )
+        .await?;
         parts.push(completed);
     }
 
     Ok(parts)
 }
 
-/// Create an empty "folder" by writing a zero-byte marker object at
-/// `prefix + name + "/"`. Returns the new folder key. The caller must enforce
-/// the write gate before calling.
+/// Create an empty "folder" by writing a zero-byte marker object at `prefix + name + "/"`.
+/// Returns the new folder key. The caller must enforce the write gate before calling.
 pub async fn create_folder(
     client: &Client,
     bucket: &str,
@@ -254,10 +250,9 @@ pub async fn create_folder(
 // Deletes
 // ---------------------------------------------------------------------------
 
-/// Delete the given explicit `objects`, and recursively delete every object
-/// under each of `prefixes`. Streams a running deleted-count and a terminal
-/// `done`/`error` event; returns the total number deleted. The caller must
-/// enforce the delete gate before calling.
+/// Delete the given explicit `objects`, and recursively delete every object under each of `prefixes`.
+/// Streams a running deleted-count and a terminal `done`/`error` event; returns the total number deleted.
+/// The caller must enforce the delete gate before calling.
 pub async fn delete_objects(
     client: &Client,
     bucket: &str,
@@ -265,8 +260,6 @@ pub async fn delete_objects(
     prefixes: Vec<String>,
     on_progress: ProgressSink<DeleteProgress>,
 ) -> AppResult<u64> {
-    // Accumulate outside the worker so a mid-way failure can still report the
-    // partial count in the terminal event.
     let mut deleted: u64 = 0;
     let emit = |total| {
         on_progress(DeleteProgress {

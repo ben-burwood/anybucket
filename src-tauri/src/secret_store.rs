@@ -37,5 +37,5 @@ impl SecretStore for KeyringStore {
 /// Map a keyring error into the shared error type. Kept local because the orphan
 /// rule forbids a `From<keyring::Error>` impl for `anybucket_core`'s `AppError`.
 fn kc(err: keyring::Error) -> AppError {
-    AppError::Keychain(err.to_string())
+    AppError::Secret(err.to_string())
 }

@@ -6,20 +6,20 @@ use crate::error::{AppError, AppResult};
 
 /// Where a connection's secret access key is stored, keyed by connection `id`.
 ///
-/// The connection metadata (endpoint, region, access key id, mode) persists as
-/// plaintext JSON, but the secret access key never does — it lives only behind a
-/// `SecretStore`. Each runtime shell provides its own implementation: the desktop
-/// app backs it with the OS keychain, the server with a file/volume on disk.
+/// The connection metadata (endpoint, region, access key id, mode) persists as plaintext JSON,
+/// the secret access key lives only behind a `SecretStore`.
+///
+/// Each runtime shell provides its own implementation.
 pub trait SecretStore: Send + Sync {
     fn set(&self, id: &str, secret: &str) -> AppResult<()>;
     fn get(&self, id: &str) -> AppResult<String>;
     fn delete(&self, id: &str) -> AppResult<()>;
 }
 
-/// What a connection is permitted to do, in increasing order of capability.
+/// Connection AccessMode - increasing order of capability.
 ///
-/// Defaults to [`AccessMode::ReadOnly`] so connections saved before this field
-/// existed — and any new connection until explicitly armed — cannot write.
+/// Defaults to [`AccessMode::ReadOnly`]
+///
 /// `ReadWriteDelete` is a superset of `ReadWrite`: it permits everything writes
 /// do, plus deletes (which are gated separately by [`crate::state`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -32,9 +32,6 @@ pub enum AccessMode {
 }
 
 /// A saved connection to an S3-compatible endpoint.
-///
-/// The secret access key is **never** stored here or sent to the frontend; it
-/// lives only in the OS keychain, keyed by `id`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Connection {
@@ -53,8 +50,8 @@ pub struct Connection {
     pub mode: AccessMode,
 }
 
-/// Payload from the frontend when creating/updating a connection. Carries the
-/// secret so it can be written to the keychain, then discarded.
+/// Payload from the frontend when creating/updating a connection.
+/// Carries the secret so it can be written to the secret store, then discarded.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionInput {
@@ -97,8 +94,7 @@ struct ConnectionsFile {
     active_id: Option<String>,
 }
 
-/// Persistent store of connection metadata backed by a JSON file, with secrets
-/// delegated to a pluggable [`SecretStore`].
+/// Persistent store of connection metadata backed by a JSON file, with secrets delegated to a pluggable [`SecretStore`].
 pub struct ConnectionStore {
     path: PathBuf,
     data: ConnectionsFile,
@@ -106,8 +102,8 @@ pub struct ConnectionStore {
 }
 
 impl ConnectionStore {
-    /// Load the store from `config_dir/connections.json`, creating an empty one
-    /// if the file does not yet exist. Secrets are delegated to `secrets`.
+    /// Load the store from `config_dir/connections.json`, creating empty if the file does not exist
+    /// Secrets are delegated to `secrets`.
     pub fn load(config_dir: &Path, secrets: Box<dyn SecretStore>) -> AppResult<Self> {
         let path = config_dir.join("connections.json");
         let data = if path.exists() {
@@ -148,16 +144,15 @@ impl ConnectionStore {
             .ok_or_else(|| AppError::ConnectionNotFound(id.to_string()))
     }
 
-    /// Create or update a connection, writing the secret to the keychain.
+    /// Create or update a connection, writing the secret to the secret store.
     pub fn upsert(&mut self, input: ConnectionInput) -> AppResult<Connection> {
         let id = input
             .id
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-        // An empty secret on edit means "keep the existing secret"; only
-        // (over)write when the caller actually supplied a secret.
         if !input.secret_access_key.is_empty() {
+            // Overwrite current Secret with new supplied one
             self.secrets.set(&id, &input.secret_access_key)?;
         }
 
@@ -171,8 +166,7 @@ impl ConnectionStore {
         Ok(conn)
     }
 
-    /// Delete a connection and its keychain secret. Clears the active selection
-    /// if it pointed at this connection.
+    /// Delete a connection and its stored secret.
     pub fn remove(&mut self, id: &str) -> AppResult<()> {
         let before = self.data.connections.len();
         self.data.connections.retain(|c| c.id != id);
@@ -182,7 +176,6 @@ impl ConnectionStore {
         if self.data.active_id.as_deref() == Some(id) {
             self.data.active_id = None;
         }
-        // Best-effort: a missing secret entry is not an error worth failing on.
         let _ = self.secrets.delete(id);
         self.persist()?;
         Ok(())

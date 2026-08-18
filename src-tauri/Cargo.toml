@@ -25,6 +25,9 @@ tauri-plugin-clipboard-manager = "2"
 # Referenced directly for the cached client type passed into the core tasks.
 aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
 
+# The `Serialize` bound on the Channel→ProgressSink bridge helper.
+serde = "1"
+
 # Async: mutex-guarded state + local-disk upload enumeration.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync"] }
 

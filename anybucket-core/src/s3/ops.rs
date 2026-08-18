@@ -6,7 +6,7 @@ use aws_smithy_types::date_time::Format;
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 
 use crate::error::{AppError, AppResult};
-use crate::models::{Bucket, Folder, Listing, ListParams, ObjectItem, ObjectMeta};
+use crate::models::{Bucket, Folder, ListParams, Listing, ObjectItem, ObjectMeta};
 
 /// Default page size for object listings.
 const DEFAULT_MAX_KEYS: i32 = 1000;
@@ -183,7 +183,11 @@ pub async fn list_object_versions(client: &Client, params: &ListParams) -> AppRe
     }
 
     // Group by key, newest first within each key (delete markers interleave by time).
-    objects.sort_by(|a, b| a.key.cmp(&b.key).then(b.last_modified.cmp(&a.last_modified)));
+    objects.sort_by(|a, b| {
+        a.key
+            .cmp(&b.key)
+            .then(b.last_modified.cmp(&a.last_modified))
+    });
 
     let next_token = if out.is_truncated().unwrap_or(false) {
         Some(format!(
@@ -221,7 +225,9 @@ pub async fn head_object(
     Ok(ObjectMeta {
         key: key.to_string(),
         size: out.content_length().unwrap_or(0),
-        last_modified: out.last_modified().and_then(|d| d.fmt(Format::DateTime).ok()),
+        last_modified: out
+            .last_modified()
+            .and_then(|d| d.fmt(Format::DateTime).ok()),
         content_type: out.content_type().map(str::to_string),
         etag: out.e_tag().map(clean_etag),
         storage_class: out.storage_class().map(|s| s.as_str().to_string()),

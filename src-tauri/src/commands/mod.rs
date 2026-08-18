@@ -158,9 +158,7 @@ pub async fn download_object(
     state: Shared<'_>,
 ) -> AppResult<()> {
     let client = client_for_active(&state).await?;
-    let sink: ProgressSink<DownloadProgress> = Arc::new(move |p| {
-        let _ = on_progress.send(p);
-    });
+    let sink = channel_sink(on_progress);
     tasks::download_object(&client, &bucket, &key, &dest, version_id.as_deref(), sink).await
 }
 
@@ -185,12 +183,7 @@ pub async fn create_folder(
     name: String,
     state: Shared<'_>,
 ) -> AppResult<String> {
-    // Enforce the mode gate before doing anything else.
-    {
-        let st = state.lock().await;
-        st.require_writable()?;
-    }
-    let client = client_for_active(&state).await?;
+    let client = writable_client(&state).await?;
     tasks::create_folder(&client, &bucket, &prefix, &name).await
 }
 
@@ -264,15 +257,8 @@ pub async fn upload_object(
     on_progress: Channel<UploadProgress>,
     state: Shared<'_>,
 ) -> AppResult<()> {
-    // Enforce the mode gate before doing anything else.
-    {
-        let st = state.lock().await;
-        st.require_writable()?;
-    }
-    let client = client_for_active(&state).await?;
-    let sink: ProgressSink<UploadProgress> = Arc::new(move |p| {
-        let _ = on_progress.send(p);
-    });
+    let client = writable_client(&state).await?;
+    let sink = channel_sink(on_progress);
     tasks::upload_object(&client, &bucket, &key, &src_path, sink).await
 }
 
@@ -290,15 +276,8 @@ pub async fn delete_objects(
     on_progress: Channel<DeleteProgress>,
     state: Shared<'_>,
 ) -> AppResult<u64> {
-    // Enforce the mode gate before doing anything else.
-    {
-        let st = state.lock().await;
-        st.require_deletable()?;
-    }
-    let client = client_for_active(&state).await?;
-    let sink: ProgressSink<DeleteProgress> = Arc::new(move |p| {
-        let _ = on_progress.send(p);
-    });
+    let client = deletable_client(&state).await?;
+    let sink = channel_sink(on_progress);
     tasks::delete_objects(&client, &bucket, objects, prefixes, sink).await
 }
 
@@ -319,20 +298,21 @@ pub async fn transfer_objects(
     on_progress: Channel<CopyProgress>,
     state: Shared<'_>,
 ) -> AppResult<u64> {
-    // Enforce the mode gate(s) before doing anything else.
-    {
-        let st = state.lock().await;
-        st.require_writable()?;
-        if is_move {
-            st.require_deletable()?;
-        }
-    }
-    let client = client_for_active(&state).await?;
-    let sink: ProgressSink<CopyProgress> = Arc::new(move |p| {
-        let _ = on_progress.send(p);
-    });
+    // A copy needs write access; a move also needs delete (which implies write).
+    let client = if is_move {
+        deletable_client(&state).await?
+    } else {
+        writable_client(&state).await?
+    };
+    let sink = channel_sink(on_progress);
     tasks::transfer_objects(
-        &client, &src_bucket, &dst_bucket, objects, prefixes, is_move, sink,
+        &client,
+        &src_bucket,
+        &dst_bucket,
+        objects,
+        prefixes,
+        is_move,
+        sink,
     )
     .await
 }
@@ -349,9 +329,7 @@ pub async fn scan_bucket_metrics(
     state: Shared<'_>,
 ) -> AppResult<BucketMetrics> {
     let client = client_for_active(&state).await?;
-    let sink: ProgressSink<ScanProgress> = Arc::new(move |p| {
-        let _ = on_progress.send(p);
-    });
+    let sink = channel_sink(on_progress);
     tasks::scan_bucket_metrics(&client, &bucket, sink).await
 }
 
@@ -360,4 +338,27 @@ pub async fn scan_bucket_metrics(
 async fn client_for_active(state: &Shared<'_>) -> AppResult<aws_sdk_s3::Client> {
     let mut st = state.lock().await;
     st.active_client().await
+}
+
+/// Gate for writes and obtain the active client in one lock.
+async fn writable_client(state: &Shared<'_>) -> AppResult<aws_sdk_s3::Client> {
+    let mut st = state.lock().await;
+    st.writable_client().await
+}
+
+/// Gate for deletes and obtain the active client in one lock.
+async fn deletable_client(state: &Shared<'_>) -> AppResult<aws_sdk_s3::Client> {
+    let mut st = state.lock().await;
+    st.deletable_client().await
+}
+
+/// Bridge a Tauri IPC [`Channel`] to a transport-agnostic core [`ProgressSink`].
+/// The closure captures only the cheap `Channel` handle.
+fn channel_sink<P>(ch: Channel<P>) -> ProgressSink<P>
+where
+    P: serde::Serialize + Send + Sync + 'static,
+{
+    Arc::new(move |p| {
+        let _ = ch.send(p);
+    })
 }

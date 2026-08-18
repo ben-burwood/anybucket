@@ -54,6 +54,7 @@ dependencies = [
  "anybucket-core",
  "aws-sdk-s3",
  "keyring",
+ "serde",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
