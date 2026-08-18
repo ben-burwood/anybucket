@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["anybucket-core", "src-tauri"]
+members = ["anybucket-core", "anybucket-server", "src-tauri"]
 
 [workspace.package]
 version = "0.4.2"

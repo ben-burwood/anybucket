@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { isTauri } from "../platform";
 import * as s3 from "../api/s3";
 import { useDownloads } from "../store/useDownloads";
 import { useConnections } from "../store/useConnections";
@@ -77,6 +78,16 @@ async function generatePresigned() {
     error.value = errorMessage(e);
   } finally {
     busy.value = false;
+  }
+}
+
+// Open a URL in the user's browser: the Tauri opener plugin on desktop, a plain
+// new tab on web.
+function openInBrowser(url: string) {
+  if (isTauri) {
+    openUrl(url);
+  } else {
+    window.open(url, "_blank", "noopener");
   }
 }
 
@@ -301,7 +312,7 @@ onMounted(loadDetails);
         <CopyableValue v-if="presigned" :value="presigned">
           <button
             class="shrink-0 rounded border border-slate-200 px-2 text-xs hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-800"
-            @click="openUrl(presigned!)"
+            @click="openInBrowser(presigned!)"
           >
             Open
           </button>
@@ -318,8 +329,9 @@ onMounted(loadDetails);
 
     <!-- Actions -->
     <footer class="space-y-2 border-t border-slate-200 p-3 dark:border-night-800">
-      <!-- Rename (current object on a delete-capable connection only) -->
-      <template v-if="canRename">
+      <!-- Rename (current object on a delete-capable connection only).
+           Streaming move — desktop-only until Stage 3. -->
+      <template v-if="isTauri && canRename">
         <button
           v-if="!renameOpen"
           class="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
@@ -358,9 +370,10 @@ onMounted(loadDetails);
         </div>
       </template>
 
-      <!-- Delete (delete-capable connection); works on any row incl. markers -->
+      <!-- Delete (delete-capable connection); works on any row incl. markers.
+           Streaming delete — desktop-only until Stage 3. -->
       <button
-        v-if="conns.canDelete.value"
+        v-if="isTauri && conns.canDelete.value"
         class="w-full rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/70"
         :disabled="deleting"
         @click="doDelete"
@@ -368,16 +381,19 @@ onMounted(loadDetails);
         {{ deleting ? "Deleting…" : "🗑 Delete" }}
       </button>
 
-      <button
-        v-if="!object.isDeleteMarker"
-        class="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-        @click="download"
-      >
-        ⬇ Download
-      </button>
-      <p v-else class="text-center text-xs text-slate-400">
-        Delete marker — no content to download.
-      </p>
+      <!-- Download streams to disk via native save — desktop-only until Stage 4. -->
+      <template v-if="isTauri">
+        <button
+          v-if="!object.isDeleteMarker"
+          class="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+          @click="download"
+        >
+          ⬇ Download
+        </button>
+        <p v-else class="text-center text-xs text-slate-400">
+          Delete marker — no content to download.
+        </p>
+      </template>
     </footer>
   </aside>
 </template>

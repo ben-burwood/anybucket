@@ -13,6 +13,7 @@ use tauri::State;
 use tokio::sync::Mutex;
 
 use anybucket_core::connections::{Connection, ConnectionInput};
+use anybucket_core::constants::DEFAULT_PRESIGN_SECS;
 use anybucket_core::error::AppResult;
 use anybucket_core::models::{
     Bucket, BucketMetrics, CopyPrefix, CopyProgress, CopyTarget, DeleteProgress, DeleteTarget,
@@ -22,9 +23,6 @@ use anybucket_core::models::{
 use anybucket_core::s3::{self, ops};
 use anybucket_core::state::AppState;
 use anybucket_core::{tasks, ProgressSink};
-
-/// Default presigned-URL lifetime (15 minutes) when the UI does not specify one.
-const DEFAULT_PRESIGN_SECS: u64 = 900;
 
 type Shared<'a> = State<'a, Mutex<AppState>>;
 

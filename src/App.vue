@@ -2,6 +2,7 @@
 import { computed, onMounted } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri } from "./platform";
 import { useConnections } from "./store/useConnections";
 import { useSidebar } from "./store/useSidebar";
 import BucketSidebar from "./components/BucketSidebar.vue";
@@ -24,7 +25,9 @@ const showSidebar = computed(
 onMounted(() => conns.refresh());
 
 // Double-clicking the empty titlebar area maximizes/restores, like a native one.
+// Desktop-only: the browser supplies its own window chrome.
 function onTitlebarDblClick(e: MouseEvent) {
+  if (!isTauri) return;
   if ((e.target as HTMLElement).hasAttribute("data-tauri-drag-region")) {
     getCurrentWindow().toggleMaximize();
   }
@@ -68,8 +71,7 @@ function onTitlebarDblClick(e: MouseEvent) {
       <div class="flex h-full items-center gap-2" data-tauri-drag-region>
         <ThemeToggle />
         <ConnectionSwitcher />
-        <!-- Window controls flush to the top-right corner, full titlebar height. -->
-        <WindowControls class="ml-1 h-full" />
+        <WindowControls v-if="isTauri" class="ml-1 h-full" />
       </div>
     </header>
 
@@ -80,8 +82,8 @@ function onTitlebarDblClick(e: MouseEvent) {
       </main>
     </div>
 
-    <DownloadToasts />
-    <UploadToasts />
-    <WindowResizers />
+    <DownloadToasts v-if="isTauri" />
+    <UploadToasts v-if="isTauri" />
+    <WindowResizers v-if="isTauri" />
   </div>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { isTauri } from "../platform";
 
 const props = defineProps<{ value: string }>();
 
@@ -8,7 +9,13 @@ const copied = ref(false);
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 async function copy() {
-  await writeText(props.value);
+  // Desktop uses the Tauri clipboard plugin; the browser uses the async
+  // Clipboard API (available on the secure origins this app is served from).
+  if (isTauri) {
+    await writeText(props.value);
+  } else {
+    await navigator.clipboard.writeText(props.value);
+  }
   copied.value = true;
   clearTimeout(timer);
   timer = setTimeout(() => (copied.value = false), 1200);
