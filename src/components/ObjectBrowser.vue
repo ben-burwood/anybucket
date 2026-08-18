@@ -454,7 +454,9 @@ async function submitRename() {
   try {
     if (
       (await s3.objectExists(props.bucket, newKey)) &&
-      !confirm(`“${name}” already exists here and will be overwritten. Continue?`)
+      !(await askOverwrite(
+        `“${name}” already exists here and will be overwritten. Continue?`,
+      ))
     )
       return;
   } catch {
@@ -489,6 +491,29 @@ const UPLOAD_CONCURRENCY = 5;
 const OVERWRITE_CHECK_LIMIT = 100;
 // Cap on concurrent existence probes (HEADs) when checking for overwrites.
 const OVERWRITE_PROBE_CONCURRENCY = 8;
+
+const overwriteModalOpen = ref(false);
+const overwriteTitle = ref("");
+const overwriteItems = ref<string[]>([]);
+let overwriteResolve: ((ok: boolean) => void) | null = null;
+
+/** Open the overwrite modal and resolve true on confirm, false on cancel. */
+function askOverwrite(title: string, items: string[] = []): Promise<boolean> {
+  overwriteTitle.value = title;
+  overwriteItems.value = items;
+  overwriteModalOpen.value = true;
+  return new Promise((resolve) => {
+    overwriteResolve = resolve;
+  });
+}
+
+/** Close the overwrite modal and settle its pending promise. */
+function settleOverwrite(ok: boolean) {
+  overwriteModalOpen.value = false;
+  const resolve = overwriteResolve;
+  overwriteResolve = null;
+  resolve?.(ok);
+}
 
 /**
  * Open the native picker and upload the selection. A single native dialog can't
@@ -601,7 +626,7 @@ async function confirmOverwrite(
   if (files.length === 0) return true;
   // Big batches (whole folders): one generic warning, no HEAD-per-file storm.
   if (files.length > OVERWRITE_CHECK_LIMIT) {
-    return confirm(
+    return askOverwrite(
       `${verb} ${files.length} files here? Any existing files with the same names will be overwritten.`,
     );
   }
@@ -618,11 +643,9 @@ async function confirmOverwrite(
   const collisions = files.filter((_, i) => existing[i]).map((f) => f.label);
   if (collisions.length === 0) return true;
 
-  const list = collisions.slice(0, 10).join("\n");
-  const more =
-    collisions.length > 10 ? `\n…and ${collisions.length - 10} more` : "";
-  return confirm(
-    `${collisions.length} file(s) already exist and will be overwritten:\n\n${list}${more}\n\nContinue?`,
+  return askOverwrite(
+    `${collisions.length} file(s) already exist and will be overwritten. Continue?`,
+    collisions,
   );
 }
 
@@ -662,7 +685,11 @@ onMounted(async () => {
   });
 });
 
-onBeforeUnmount(() => unlistenDrag?.());
+onBeforeUnmount(() => {
+  unlistenDrag?.();
+  // Unblock any flow still awaiting the overwrite modal so its async frame unwinds.
+  settleOverwrite(false);
+});
 
 interface Row {
   kind: "folder" | "file";
@@ -1298,6 +1325,16 @@ watch(
       :confirm-label="dragIsMove ? 'Move' : 'Copy'"
       @confirm="confirmDragTransfer"
       @cancel="dragModalOpen = false"
+    />
+
+    <!-- Overwrite confirmation for uploads and renames -->
+    <ConfirmModal
+      :open="overwriteModalOpen"
+      :title="overwriteTitle"
+      :items="overwriteItems"
+      confirm-label="Overwrite"
+      @confirm="settleOverwrite(true)"
+      @cancel="settleOverwrite(false)"
     />
   </div>
 </template>
