@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# 1. Build the Vue SPA (web variant) → /app/dist
+# Build the Vue SPA (web variant) → /app/dist
 # ---------------------------------------------------------------------------
 FROM node:22-slim AS web
 
@@ -14,7 +14,7 @@ COPY . .
 RUN npm run build:web
 
 # ---------------------------------------------------------------------------
-# 2. Build the axum server binary
+# Build the axum server binary
 # ---------------------------------------------------------------------------
 FROM rust:1-slim-bookworm AS server
 
@@ -30,7 +30,7 @@ COPY . .
 RUN cargo build --release -p anybucket-server
 
 # ---------------------------------------------------------------------------
-# 3. Slim, non-root runtime: server binary + built SPA
+# Runtime : server binary + built SPA
 # ---------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
