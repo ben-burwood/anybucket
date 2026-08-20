@@ -13,8 +13,7 @@ Built with **Tauri + Vue**, using [`aws-sdk-s3`](https://docs.rs/aws-sdk-s3/late
 ## Prerequisites
 
 - **Node.js** 18+ and **Rust** 1.94.1+ (stable).
-- **Windows only:** the AWS SDK's default crypto (`aws-lc-sys`) compiles native code —
-  you need **MSVC Build Tools**, **NASM**, and **CMake** on `PATH`.
+- **Windows only:** the AWS SDK's default crypto (`aws-lc-sys`) compiles native code — you need **MSVC Build Tools**, **NASM**, and **CMake** on `PATH`.
 
 ## Develop
 
