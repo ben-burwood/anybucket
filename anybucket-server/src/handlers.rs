@@ -480,6 +480,11 @@ async fn deletable_client(state: &SharedState) -> Result<aws_sdk_s3::Client, Api
     Ok(st.deletable_client().await?)
 }
 
+async fn admin_client(state: &SharedState) -> Result<aws_sdk_s3::Client, ApiError> {
+    let mut st = state.lock().await;
+    Ok(st.admin_client().await?)
+}
+
 // ---------------------------------------------------------------------------
 // NDJSON streaming — the web analogue of the desktop Tauri `Channel`.
 // ---------------------------------------------------------------------------

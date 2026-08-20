@@ -59,6 +59,7 @@ const emptyForm = (): ConnectionInput => ({
   accessKeyId: "",
   secretAccessKey: "",
   mode: "readOnly",
+  admin: false,
 });
 
 const form = reactive<ConnectionInput>(emptyForm());
@@ -86,6 +87,7 @@ function editConnection(c: Connection) {
     accessKeyId: c.accessKeyId,
     secretAccessKey: "", // never returned; blank keeps the existing secret
     mode: c.mode,
+    admin: c.admin,
   });
   provider.value = inferProvider(c);
   editing.value = true;
@@ -184,7 +186,7 @@ onMounted(() => conns.refresh());
                 >
                   Active
                 </span>
-                <AccessModeChip :mode="c.mode" />
+                <AccessModeChip :mode="c.mode" :admin="c.admin" />
               </div>
               <p class="truncate text-xs text-slate-400">
                 {{ c.endpointUrl ?? "AWS S3" }} · {{ c.region }} ·
@@ -357,6 +359,20 @@ onMounted(() => conns.refresh());
             </button>
           </div>
         </div>
+
+        <label class="flex items-start gap-2">
+          <input
+            v-model="form.admin"
+            type="checkbox"
+            class="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-night-700"
+          />
+          <span class="text-xs">
+            <span class="font-medium text-slate-600 dark:text-slate-300">Admin</span>
+            <span class="block text-slate-400">
+              Allow Bucket Creation and Deletion
+            </span>
+          </span>
+        </label>
 
         <div
           v-if="testStatus"

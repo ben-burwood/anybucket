@@ -26,6 +26,8 @@ const canWrite = computed(
 
 const canDelete = computed(() => state.active?.mode === "readWriteDelete");
 
+const canAdmin = computed(() => state.active?.admin === true);
+
 async function refresh(): Promise<void> {
   state.loading = true;
   state.error = null;
@@ -73,6 +75,7 @@ export function useConnections() {
     state: readonly(state),
     canWrite,
     canDelete,
+    canAdmin,
     refresh,
     save,
     remove,

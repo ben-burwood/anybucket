@@ -38,6 +38,9 @@ pub enum AppError {
     #[error("the active connection does not permit deletes")]
     DeleteNotAllowed,
 
+    #[error("the active connection does not permit bucket administration")]
+    AdminNotAllowed,
+
     #[error("delete failed: {0}")]
     Delete(String),
 
@@ -62,6 +65,7 @@ impl AppError {
             AppError::ReadOnly => "read_only",
             AppError::Upload(_) => "upload",
             AppError::DeleteNotAllowed => "delete_not_allowed",
+            AppError::AdminNotAllowed => "admin_not_allowed",
             AppError::Delete(_) => "delete",
             AppError::Copy(_) => "copy",
             AppError::Other(_) => "other",

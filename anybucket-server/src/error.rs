@@ -24,7 +24,8 @@ impl ApiError {
             // Access-mode gate / no selection: the request is understood but refused.
             AppError::NoActiveConnection
             | AppError::ReadOnly
-            | AppError::DeleteNotAllowed => StatusCode::FORBIDDEN,
+            | AppError::DeleteNotAllowed
+            | AppError::AdminNotAllowed => StatusCode::FORBIDDEN,
             // The named/needed connection or its credentials are absent.
             AppError::ConnectionNotFound(_) | AppError::MissingCredentials(_) => {
                 StatusCode::NOT_FOUND

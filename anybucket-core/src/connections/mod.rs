@@ -48,6 +48,9 @@ pub struct Connection {
     /// Whether writes are permitted for this connection. Enforced in the backend.
     #[serde(default)]
     pub mode: AccessMode,
+    /// Whether bucket administration (create/delete buckets) is permitted.
+    #[serde(default)]
+    pub admin: bool,
 }
 
 /// Payload from the frontend when creating/updating a connection.
@@ -67,6 +70,8 @@ pub struct ConnectionInput {
     pub secret_access_key: String,
     #[serde(default)]
     pub mode: AccessMode,
+    #[serde(default)]
+    pub admin: bool,
 }
 
 impl ConnectionInput {
@@ -80,6 +85,7 @@ impl ConnectionInput {
             force_path_style: self.force_path_style,
             access_key_id: self.access_key_id.clone(),
             mode: self.mode,
+            admin: self.admin,
         }
     }
 }

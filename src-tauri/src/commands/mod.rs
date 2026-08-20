@@ -350,6 +350,12 @@ async fn deletable_client(state: &Shared<'_>) -> AppResult<aws_sdk_s3::Client> {
     st.deletable_client().await
 }
 
+/// Gate for bucket administration and obtain the active client in one lock.
+async fn admin_client(state: &Shared<'_>) -> AppResult<aws_sdk_s3::Client> {
+    let mut st = state.lock().await;
+    st.admin_client().await
+}
+
 /// Bridge a Tauri IPC [`Channel`] to a transport-agnostic core [`ProgressSink`].
 /// The closure captures only the cheap `Channel` handle.
 fn channel_sink<P>(ch: Channel<P>) -> ProgressSink<P>
