@@ -87,6 +87,25 @@ pub async fn list_buckets(state: Shared<'_>) -> AppResult<Vec<Bucket>> {
     ops::list_buckets(&client).await
 }
 
+// ---------------------------------------------------------------------------
+// Bucket administration (admin connections only)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn create_bucket(name: String, state: Shared<'_>) -> AppResult<()> {
+    let mut st = state.lock().await;
+    st.require_admin()?;
+    let conn = st.active_connection()?;
+    let client = st.active_client().await?;
+    ops::create_bucket(&client, &name, &conn.region, conn.endpoint_url.is_some()).await
+}
+
+#[tauri::command]
+pub async fn delete_bucket(name: String, state: Shared<'_>) -> AppResult<()> {
+    let client = admin_client(&state).await?;
+    ops::delete_bucket(&client, &name).await
+}
+
 #[tauri::command]
 pub async fn list_objects(params: ListParams, state: Shared<'_>) -> AppResult<Listing> {
     let client = client_for_active(&state).await?;

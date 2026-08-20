@@ -114,6 +114,18 @@ pub struct ObjectExistsReq {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreateBucketReq {
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteBucketReq {
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateFolderReq {
     pub bucket: String,
     pub prefix: String,
@@ -226,6 +238,29 @@ pub async fn test_connection(Json(req): Json<TestConnectionReq>) -> ApiResult<u3
 pub async fn list_buckets(State(state): State<SharedState>) -> ApiResult<Vec<Bucket>> {
     let client = client_for_active(&state).await?;
     Ok(Json(ops::list_buckets(&client).await?))
+}
+
+/// Create a bucket. Fails unless the active connection is flagged `admin`.
+pub async fn create_bucket(
+    State(state): State<SharedState>,
+    Json(req): Json<CreateBucketReq>,
+) -> ApiResult<()> {
+    let mut st = state.lock().await;
+    st.require_admin()?;
+    let conn = st.active_connection()?;
+    let client = st.active_client().await?;
+    ops::create_bucket(&client, &req.name, &conn.region, conn.endpoint_url.is_some()).await?;
+    Ok(Json(()))
+}
+
+/// Delete an (already-empty) bucket. Fails unless the active connection is flagged `admin`.
+pub async fn delete_bucket(
+    State(state): State<SharedState>,
+    Json(req): Json<DeleteBucketReq>,
+) -> ApiResult<()> {
+    let client = admin_client(&state).await?;
+    ops::delete_bucket(&client, &req.name).await?;
+    Ok(Json(()))
 }
 
 pub async fn list_objects(

@@ -1,6 +1,9 @@
 use aws_sdk_s3::operation::get_object::GetObjectOutput;
 use aws_sdk_s3::primitives::ByteStream;
-use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, Delete, ObjectIdentifier};
+use aws_sdk_s3::types::{
+    BucketLocationConstraint, CompletedMultipartUpload, CompletedPart, CreateBucketConfiguration,
+    Delete, ObjectIdentifier,
+};
 use aws_sdk_s3::Client;
 use aws_smithy_types::date_time::Format;
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
@@ -29,6 +32,55 @@ pub async fn list_buckets(client: &Client) -> AppResult<Vec<Bucket>> {
         })
         .collect();
     Ok(buckets)
+}
+
+/// Create a Bucket.
+pub async fn create_bucket(
+    client: &Client,
+    name: &str,
+    region: &str,
+    custom_endpoint: bool,
+) -> AppResult<()> {
+    let mut req = client.create_bucket().bucket(name);
+    if needs_location_constraint(custom_endpoint, region) {
+        let cfg = CreateBucketConfiguration::builder()
+            .location_constraint(BucketLocationConstraint::from(region))
+            .build();
+        req = req.create_bucket_configuration(cfg);
+    }
+    match req.send().await {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            if let Some(svc) = err.as_service_error() {
+                if svc.is_bucket_already_exists() || svc.is_bucket_already_owned_by_you() {
+                    return Err(AppError::BucketAlreadyExists(name.to_string()));
+                }
+            }
+            Err(AppError::from(err))
+        }
+    }
+}
+
+/// Whether `CreateBucket` should carry a `CreateBucketConfiguration` / `LocationConstraint`:
+/// only for real AWS (no custom endpoint) in a region other than `us-east-1`.
+fn needs_location_constraint(custom_endpoint: bool, region: &str) -> bool {
+    !custom_endpoint && region != "us-east-1"
+}
+
+/// Delete a Bucket.
+/// The bucket must already be empty (no objects, versions, or delete markers); a non-empty bucket surfaces [`AppError::BucketNotEmpty`].
+pub async fn delete_bucket(client: &Client, name: &str) -> AppResult<()> {
+    match client.delete_bucket().bucket(name).send().await {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            if let Some(svc) = err.as_service_error() {
+                if svc.meta().code() == Some("BucketNotEmpty") {
+                    return Err(AppError::BucketNotEmpty(name.to_string()));
+                }
+            }
+            Err(AppError::from(err))
+        }
+    }
 }
 
 /// List one page of a bucket at a given prefix, folder-style: `CommonPrefixes`
@@ -676,7 +728,18 @@ fn clean_etag(etag: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::encode_copy_source;
+    use super::{encode_copy_source, needs_location_constraint};
+
+    #[test]
+    fn location_constraint_only_for_real_aws_outside_us_east_1() {
+        // Real AWS (no custom endpoint):
+        assert!(!needs_location_constraint(false, "us-east-1"));
+        assert!(needs_location_constraint(false, "eu-west-1"));
+        // Any custom endpoint (MinIO, R2 `auto`, etc.): never send a constraint.
+        assert!(!needs_location_constraint(true, "us-east-1"));
+        assert!(!needs_location_constraint(true, "eu-west-1"));
+        assert!(!needs_location_constraint(true, "auto"));
+    }
 
     #[test]
     fn copy_source_keeps_slashes_and_unreserved() {

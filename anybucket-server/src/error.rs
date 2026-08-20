@@ -30,8 +30,10 @@ impl ApiError {
             AppError::ConnectionNotFound(_) | AppError::MissingCredentials(_) => {
                 StatusCode::NOT_FOUND
             }
-            // Malformed configuration / input.
-            AppError::Config(_) => StatusCode::BAD_REQUEST,
+            // Malformed configuration / input / conflicting state.
+            AppError::Config(_)
+            | AppError::BucketAlreadyExists(_)
+            | AppError::BucketNotEmpty(_) => StatusCode::BAD_REQUEST,
             // Provider can't do it.
             AppError::Unsupported(_) => StatusCode::NOT_IMPLEMENTED,
             // Upstream S3 / transfer failures — a bad gateway from the browser's view.

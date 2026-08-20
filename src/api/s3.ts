@@ -18,6 +18,16 @@ export function listBuckets(): Promise<Bucket[]> {
   return invoke("list_buckets");
 }
 
+/** Create a bucket (admin connections only). */
+export function createBucket(name: string): Promise<void> {
+  return invoke("create_bucket", { name });
+}
+
+/** Delete an (already-empty) bucket (admin connections only). */
+export function deleteBucket(name: string): Promise<void> {
+  return invoke("delete_bucket", { name });
+}
+
 export function listObjects(
   bucket: string,
   prefix: string,

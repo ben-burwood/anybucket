@@ -41,6 +41,12 @@ pub enum AppError {
     #[error("the active connection does not permit bucket administration")]
     AdminNotAllowed,
 
+    #[error("a bucket named '{0}' already exists")]
+    BucketAlreadyExists(String),
+
+    #[error("bucket '{0}' is not empty")]
+    BucketNotEmpty(String),
+
     #[error("delete failed: {0}")]
     Delete(String),
 
@@ -66,6 +72,8 @@ impl AppError {
             AppError::Upload(_) => "upload",
             AppError::DeleteNotAllowed => "delete_not_allowed",
             AppError::AdminNotAllowed => "admin_not_allowed",
+            AppError::BucketAlreadyExists(_) => "bucket_already_exists",
+            AppError::BucketNotEmpty(_) => "bucket_not_empty",
             AppError::Delete(_) => "delete",
             AppError::Copy(_) => "copy",
             AppError::Other(_) => "other",
