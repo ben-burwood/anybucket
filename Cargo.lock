@@ -84,7 +84,7 @@ dependencies = [
 
 [[package]]
 name = "anybucket"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "anybucket-core",
  "aws-sdk-s3",
@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "anybucket-core"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "aws-config",
  "aws-credential-types",
@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "anybucket-server"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "aes-gcm",
  "anybucket-core",
