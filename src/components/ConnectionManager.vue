@@ -5,6 +5,7 @@ import { useConnections } from "../store/useConnections";
 import { useConfirm } from "../store/useConfirm";
 import { errorMessage, type Connection, type ConnectionInput } from "../types";
 import AccessModeChip from "./AccessModeChip.vue";
+import { ArrowPathIcon } from "@heroicons/vue/20/solid";
 
 const conns = useConnections();
 const confirmDialog = useConfirm();
@@ -406,26 +407,10 @@ onMounted(() => conns.refresh());
             class="flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
             @click="testConnection"
           >
-            <svg
+            <ArrowPathIcon
               v-if="testing"
               class="h-3.5 w-3.5 animate-spin text-slate-400"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              />
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 0 1 8-8V0C5.4 0 0 5.4 0 12h4Z"
-              />
-            </svg>
+            />
             {{ testing ? "Testing…" : "Test" }}
           </button>
           <button

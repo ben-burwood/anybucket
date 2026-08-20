@@ -7,6 +7,7 @@ import { errorMessage, type Bucket } from "../types";
 import { formatDate } from "../utils/format";
 import ConfirmModal from "./ConfirmModal.vue";
 import CreateBucketModal from "./CreateBucketModal.vue";
+import { TrashIcon } from "@heroicons/vue/20/solid";
 
 const { conns, buckets, loading, refreshing, error, noConnection, open, refresh } =
   useActiveBuckets();
@@ -130,13 +131,7 @@ async function confirmDelete() {
             title="Delete bucket"
             @click.stop="askDelete(b)"
           >
-            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path
-                fill-rule="evenodd"
-                d="M8.75 1a1 1 0 0 0-.96.73L7.42 3H4a1 1 0 0 0 0 2h12a1 1 0 1 0 0-2h-3.42l-.37-1.27A1 1 0 0 0 11.25 1h-2.5ZM5 7a1 1 0 0 1 1 1v7a1 1 0 1 0 2 0V8a1 1 0 1 1 2 0v7a1 1 0 1 0 2 0V8a1 1 0 1 1 2 0v7a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V7Z"
-                clip-rule="evenodd"
-              />
-            </svg>
+            <TrashIcon class="h-4 w-4" />
           </button>
         </div>
         <p

@@ -1,4 +1,6 @@
 ---
+import { Icon } from 'astro-icon/components';
+
 const features = [
   {
     title: 'Works with any S3 store',
@@ -53,7 +55,6 @@ const features = [
     title: 'Create & delete buckets',
     body: 'Provision new buckets and remove empty ones right from the app — an opt-in admin capability set per connection.',
     icon: 'bucket',
-    highlight: true,
   },
   {
     title: 'Bucket metrics',
@@ -63,17 +64,17 @@ const features = [
 ];
 
 const icons: Record<string, string> = {
-  cloud: '<path d="M6.5 19a4.5 4.5 0 0 1-.53-8.97 6 6 0 0 1 11.64-1.2A4.5 4.5 0 0 1 17.5 19h-11Z"/>',
-  lock: '<path d="M7 10V7a5 5 0 0 1 10 0v3h.5A1.5 1.5 0 0 1 19 11.5v8A1.5 1.5 0 0 1 17.5 21h-11A1.5 1.5 0 0 1 5 19.5v-8A1.5 1.5 0 0 1 6.5 10H7Zm2 0h6V7a3 3 0 1 0-6 0v3Z"/>',
-  shield: '<path d="M12 2.5 4.5 5.5v5.2c0 4.6 3.1 8.9 7.5 10.3 4.4-1.4 7.5-5.7 7.5-10.3V5.5L12 2.5Zm-1 12.9-2.7-2.7 1.4-1.4 1.3 1.3 3.6-3.6 1.4 1.4-5 5Z"/>',
-  bolt: '<path d="M13 2 4 13h6l-1 9 9-11h-6l1-9Z"/>',
-  folder: '<path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z"/>',
-  link: '<path d="M9 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5M15 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
-  upload: '<path d="M12 3 7 8h3v7h4V8h3l-5-5Z"/><path d="M5 18h14v2H5z"/>',
-  move: '<path d="M12 2 9 5h2v6H5V9L2 12l3 3v-2h6v6H9l3 3 3-3h-2v-6h6v2l3-3-3-3v2h-6V5h2l-3-3Z"/>',
-  chart: '<path d="M4 20V10h4v10H4Zm6 0V4h4v16h-4Zm6 0v-7h4v7h-4Z"/>',
-  server: '<path d="M4 4h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm3 2.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM4 14h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Zm3 2.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/>',
-  bucket: '<path d="M4 4h16M5 7h14l-1.3 11.5a2 2 0 0 1-2 1.8H8.3a2 2 0 0 1-2-1.8L5 7Zm7 3.5v6m-3-3h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  cloud: 'heroicons:cloud-solid',
+  lock: 'heroicons:lock-closed-solid',
+  shield: 'heroicons:shield-check-solid',
+  bolt: 'heroicons:bolt-solid',
+  folder: 'heroicons:folder-solid',
+  link: 'heroicons:link-solid',
+  upload: 'heroicons:arrow-up-tray-solid',
+  move: 'heroicons:arrows-pointing-out-solid',
+  chart: 'heroicons:chart-bar-solid',
+  server: 'heroicons:server-solid',
+  bucket: 'heroicons:archive-box-solid',
 };
 ---
 
@@ -99,7 +100,7 @@ const icons: Record<string, string> = {
             f.highlight ? 'bg-brand-500/15 text-brand-400' : 'bg-night-800 text-ink-muted',
           ]}
         >
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true" set:html={icons[f.icon]} />
+          <Icon name={icons[f.icon]} width="22" height="22" aria-hidden="true" />
         </div>
         <h3 class="mt-4 font-semibold">{f.title}</h3>
         <p class="mt-1.5 text-sm leading-relaxed text-ink-muted">{f.body}</p>

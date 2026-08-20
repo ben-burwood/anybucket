@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import { useSidebar } from "../store/useSidebar";
 import { useActiveBuckets } from "../composables/useActiveBuckets";
+import { ArrowPathIcon, ChevronLeftIcon } from "@heroicons/vue/20/solid";
 
 const route = useRoute();
 const sidebar = useSidebar();
@@ -60,13 +61,7 @@ onBeforeUnmount(() => endResize?.());
           :disabled="loading || refreshing"
           @click="refresh()"
         >
-          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path
-              fill-rule="evenodd"
-              d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h1.633a.75.75 0 0 0 0-1.5H3.945a.75.75 0 0 0-.75.75v3.483a.75.75 0 0 0 1.5 0v-1.643l.312.311a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.417-.418Zm.937-8.924a.75.75 0 0 0-.75.75v1.643l-.312-.311A7 7 0 0 0 3.475 7.72a.75.75 0 0 0 1.417.418 5.5 5.5 0 0 1 9.201-2.466l.312.311h-1.633a.75.75 0 0 0 0 1.5h3.483a.75.75 0 0 0 .75-.75V3.25a.75.75 0 0 0-.75-.75Z"
-              clip-rule="evenodd"
-            />
-          </svg>
+          <ArrowPathIcon class="h-4 w-4" />
         </button>
         <button
           type="button"
@@ -74,13 +69,7 @@ onBeforeUnmount(() => endResize?.());
           class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-night-800"
           @click="sidebar.toggle()"
         >
-          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-            <path
-              fill-rule="evenodd"
-              d="M12.79 5.23a.75.75 0 0 1-.02 1.06L8.832 10l3.938 3.71a.75.75 0 1 1-1.04 1.08l-4.5-4.25a.75.75 0 0 1 0-1.08l4.5-4.25a.75.75 0 0 1 1.06.02Z"
-              clip-rule="evenodd"
-            />
-          </svg>
+          <ChevronLeftIcon class="h-4 w-4" />
         </button>
       </div>
     </div>

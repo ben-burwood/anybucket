@@ -44,6 +44,7 @@ import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
 import ConfirmModal from "./ConfirmModal.vue";
 import DestinationPicker from "./DestinationPicker.vue";
+import { ArrowPathIcon } from "@heroicons/vue/20/solid";
 
 const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
@@ -1193,18 +1194,10 @@ watch(
           :disabled="state.loading"
           @click="refresh"
         >
-          <svg
+          <ArrowPathIcon
             class="h-3.5 w-3.5"
             :class="{ 'animate-spin': state.loading }"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M15.312 5.312A6.5 6.5 0 0 0 4.2 8.2a.75.75 0 0 1-1.45-.38 8 8 0 0 1 13.66-3.57l.84-.84A.5.5 0 0 1 18 3.76v3.49a.5.5 0 0 1-.5.5h-3.49a.5.5 0 0 1-.354-.853l1.156-1.156ZM4.688 14.688A6.5 6.5 0 0 0 15.8 11.8a.75.75 0 0 1 1.45.38 8 8 0 0 1-13.66 3.57l-.84.84A.5.5 0 0 1 2 16.24v-3.49a.5.5 0 0 1 .5-.5h3.49a.5.5 0 0 1 .354.853l-1.156 1.156Z"
-              clip-rule="evenodd"
-            />
-          </svg>
+          />
           Refresh
         </button>
       </div>

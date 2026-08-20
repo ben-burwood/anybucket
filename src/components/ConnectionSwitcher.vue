@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useConnections } from "../store/useConnections";
 import AccessModeChip from "./AccessModeChip.vue";
+import { ChevronDownIcon } from "@heroicons/vue/20/solid";
 
 const router = useRouter();
 const conns = useConnections();
@@ -60,17 +61,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
         :admin="conns.state.active?.admin ?? false"
         short
       />
-      <svg
-        class="h-3.5 w-3.5 shrink-0 text-slate-400"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-      >
-        <path
-          fill-rule="evenodd"
-          d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
-          clip-rule="evenodd"
-        />
-      </svg>
+      <ChevronDownIcon class="h-3.5 w-3.5 shrink-0 text-slate-400" />
     </button>
 
     <!-- Dropdown -->

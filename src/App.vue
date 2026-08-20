@@ -14,6 +14,7 @@ import WindowResizers from "./components/WindowResizers.vue";
 import DownloadToasts from "./components/DownloadToasts.vue";
 import UploadToasts from "./components/UploadToasts.vue";
 import ConfirmModal from "./components/ConfirmModal.vue";
+import { ViewColumnsIcon } from "@heroicons/vue/20/solid";
 
 const conns = useConnections();
 const sidebar = useSidebar();
@@ -54,13 +55,7 @@ function onTitlebarDblClick(e: MouseEvent) {
           class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-emerald-600 dark:text-slate-400 dark:hover:bg-night-800"
           @click="sidebar.toggle()"
         >
-          <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path
-              fill-rule="evenodd"
-              d="M2 4.75A1.75 1.75 0 0 1 3.75 3h12.5A1.75 1.75 0 0 1 18 4.75v10.5A1.75 1.75 0 0 1 16.25 17H3.75A1.75 1.75 0 0 1 2 15.25V4.75Zm1.5 0v10.5c0 .138.112.25.25.25H7.5v-11H3.75a.25.25 0 0 0-.25.25ZM9 4.5v11h7.25a.25.25 0 0 0 .25-.25V4.75a.25.25 0 0 0-.25-.25H9Z"
-              clip-rule="evenodd"
-            />
-          </svg>
+          <ViewColumnsIcon class="h-5 w-5" />
         </button>
         <RouterLink
           to="/"
