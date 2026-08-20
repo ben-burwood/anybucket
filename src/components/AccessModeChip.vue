@@ -3,8 +3,8 @@ import { computed } from "vue";
 import type { AccessMode } from "../types";
 
 const props = withDefaults(
-  defineProps<{ mode: AccessMode; short?: boolean }>(),
-  { short: false },
+  defineProps<{ mode: AccessMode; short?: boolean; admin?: boolean }>(),
+  { short: false, admin: false },
 );
 
 interface Style {
@@ -40,11 +40,20 @@ const label = computed(() => (props.short ? style.value.short : style.value.long
 </script>
 
 <template>
-  <span
-    class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
-    :class="style.class"
-    :title="style.title"
-  >
-    {{ label }}
+  <span class="inline-flex shrink-0 items-center gap-1">
+    <span
+      class="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
+      :class="style.class"
+      :title="style.title"
+    >
+      {{ label }}
+    </span>
+    <span
+      v-if="admin"
+      class="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+      title="Bucket administration (create/delete buckets) enabled"
+    >
+      {{ short ? "ADM" : "admin" }}
+    </span>
   </span>
 </template>

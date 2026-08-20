@@ -55,7 +55,11 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
       <span class="min-w-0 flex-1 truncate text-left">
         {{ conns.state.active?.name ?? "No connection" }}
       </span>
-      <AccessModeChip :mode="conns.state.active?.mode ?? 'readOnly'" short />
+      <AccessModeChip
+        :mode="conns.state.active?.mode ?? 'readOnly'"
+        :admin="conns.state.active?.admin ?? false"
+        short
+      />
       <svg
         class="h-3.5 w-3.5 shrink-0 text-slate-400"
         viewBox="0 0 20 20"
@@ -88,7 +92,7 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
         <span class="min-w-0 flex-1">
           <span class="flex items-center gap-1.5">
             <span class="min-w-0 flex-1 truncate">{{ c.name }}</span>
-            <AccessModeChip :mode="c.mode" />
+            <AccessModeChip :mode="c.mode" :admin="c.admin" />
           </span>
           <span class="block truncate text-xs text-slate-400">
             {{ c.endpointUrl ?? "AWS S3" }} · {{ c.region }}

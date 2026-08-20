@@ -30,6 +30,8 @@ pub fn run() {
             commands::set_active_connection,
             commands::test_connection,
             commands::list_buckets,
+            commands::create_bucket,
+            commands::delete_bucket,
             commands::list_objects,
             commands::head_object,
             commands::presign_get,

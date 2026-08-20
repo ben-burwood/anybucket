@@ -14,6 +14,7 @@ export interface Connection {
   forcePathStyle: boolean;
   accessKeyId: string;
   mode: AccessMode;
+  admin: boolean;
 }
 
 /** Payload for creating/updating a connection — carries the secret. */
@@ -26,6 +27,7 @@ export interface ConnectionInput {
   accessKeyId: string;
   secretAccessKey: string;
   mode: AccessMode;
+  admin: boolean;
 }
 
 export interface Bucket {

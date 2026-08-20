@@ -39,8 +39,15 @@ impl AppState {
         }
     }
 
-    /// Return an S3 client for the active connection, building and caching it on
-    /// first use (or after the active connection changes).
+    pub fn require_admin(&self) -> AppResult<()> {
+        if self.active_connection()?.admin {
+            Ok(())
+        } else {
+            Err(AppError::AdminNotAllowed)
+        }
+    }
+
+    /// Return an S3 client for the active connection, building and caching it on first use (or after the active connection changes).
     pub async fn active_client(&mut self) -> AppResult<Client> {
         let conn = self.active_connection()?;
         if let Some((id, client)) = &self.client_cache {
@@ -54,19 +61,22 @@ impl AppState {
         Ok(client)
     }
 
-    /// Gate for writes, then return the active client — the capability→client
-    /// mapping both shells share, in a single lock.
     /// Fails if the active connection is read-only.
     pub async fn writable_client(&mut self) -> AppResult<Client> {
         self.require_writable()?;
         self.active_client().await
     }
 
-    /// Gate for deletes, then return the active client.
     /// Fails unless the active connection permits deletes.
     /// (`ReadWriteDelete` implies write access, so this also covers a move's write requirement.)
     pub async fn deletable_client(&mut self) -> AppResult<Client> {
         self.require_deletable()?;
+        self.active_client().await
+    }
+
+    /// Fails unless the active connection is flagged `admin`.
+    pub async fn admin_client(&mut self) -> AppResult<Client> {
+        self.require_admin()?;
         self.active_client().await
     }
 
