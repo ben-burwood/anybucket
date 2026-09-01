@@ -48,12 +48,7 @@ pub async fn download_object(
         Some(n) if n >= 0 => Some(n as u64),
         _ => None,
     };
-    let mut body = output.body;
-    let mut file = tokio::fs::File::create(dest).await?;
-    let mut downloaded: u64 = 0;
-    let mut last_emitted: u64 = 0;
 
-    // Same event shape every time; only the running count, done flag, and error vary.
     let event = |downloaded, done, error| DownloadProgress {
         key: key.to_string(),
         downloaded,
@@ -62,28 +57,50 @@ pub async fn download_object(
         error,
     };
 
-    loop {
-        match body.try_next().await {
-            Ok(Some(chunk)) => {
-                file.write_all(&chunk).await?;
-                downloaded += chunk.len() as u64;
-                if downloaded - last_emitted >= PROGRESS_STEP {
-                    last_emitted = downloaded;
-                    on_progress(event(downloaded, false, None));
+    let tmp = format!("{dest}.download");
+
+    let mut body = output.body;
+    let mut downloaded: u64 = 0;
+
+    let result: AppResult<()> = async {
+        let mut file = tokio::fs::File::create(&tmp).await?;
+        let mut last_emitted: u64 = 0;
+
+        loop {
+            match body.try_next().await {
+                Ok(Some(chunk)) => {
+                    file.write_all(&chunk).await?;
+                    downloaded += chunk.len() as u64;
+                    if downloaded - last_emitted >= PROGRESS_STEP {
+                        last_emitted = downloaded;
+                        on_progress(event(downloaded, false, None));
+                    }
                 }
-            }
-            Ok(None) => break,
-            Err(e) => {
-                let msg = e.to_string();
-                on_progress(event(downloaded, true, Some(msg.clone())));
-                return Err(AppError::Download(msg));
+                Ok(None) => break,
+                Err(e) => return Err(AppError::Download(e.to_string())),
             }
         }
-    }
 
-    file.flush().await?;
-    on_progress(event(downloaded, true, None));
-    Ok(())
+        file.flush().await?;
+
+        tokio::fs::rename(&tmp, dest).await?;
+
+        Ok(())
+    }
+    .await;
+
+    match result {
+        Ok(()) => {
+            on_progress(event(downloaded, true, None));
+            Ok(())
+        }
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            let msg = e.to_string();
+            on_progress(event(downloaded, true, Some(msg.clone())));
+            Err(e)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
