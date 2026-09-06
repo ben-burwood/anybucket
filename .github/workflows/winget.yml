@@ -1,8 +1,9 @@
 name: Publish to WinGet
 
 on:
-#   release:
-#     types: [published]
+  workflow_run:
+    workflows: ["Publish"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       release:
@@ -12,13 +13,14 @@ on:
 jobs:
   winget:
     runs-on: windows-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    # Manual runs always proceed. Automatic runs only after Publish succeeds
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Publish AnyBucket update to WinGet
         shell: pwsh
         run: |
-          $tag = "${{ github.event.release.tag_name || inputs.release }}"      # e.g. app-v0.3.1
-          $version = $tag -replace '^app-v', ''                                # e.g. 0.3.1
+          $tag = "${{ inputs.release || github.event.workflow_run.head_branch }}"      # e.g. app-v0.3.1
+          $version = $tag -replace '^app-v', ''                                        # e.g. 0.3.1
 
           $installerUrl = "https://github.com/ben-burwood/anybucket/releases/download/$tag/AnyBucket_${version}_x64-setup.exe"
 
