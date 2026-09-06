@@ -27,20 +27,14 @@ import { REPO_URL, asset } from '../consts';
         >Self-hosted</a
       >
 
-      <!-- Star on GitHub — star count injected client-side (see Scripts.astro) -->
       <a
         href={REPO_URL}
         target="_blank"
         rel="noopener"
-        class="group inline-flex items-center gap-2 rounded-md border border-night-700 bg-night-900 py-2 pl-3 pr-1 text-sm font-medium text-ink transition hover:border-night-600 hover:bg-night-800"
+        class="inline-flex items-center gap-2 rounded-md border border-night-700 bg-night-900 px-3.5 py-2 text-sm font-medium text-ink transition hover:border-night-600 hover:bg-night-800"
       >
-        <Icon name="heroicons:star-16-solid" width="16" height="16" aria-hidden="true" />
-        <span>Star</span>
-        <span
-          id="star-count"
-          class="min-w-[2.25rem] rounded-[5px] bg-night-800 px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-ink-muted transition group-hover:text-ink"
-          >★</span
-        >
+        <Icon name="simple-icons:github" width="16" height="16" aria-hidden="true" />
+        <span>GitHub</span>
       </a>
     </div>
   </nav>
