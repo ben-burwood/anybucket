@@ -21,7 +21,6 @@ import Footer from '../components/Footer.astro';
 
 <script>
   import {
-    API_REPO,
     API_LATEST_RELEASE,
     LATEST_RELEASE_URL,
     PLATFORMS,
@@ -87,19 +86,6 @@ import Footer from '../components/Footer.astro';
       return null;
     }
   }
-
-  function formatStars(n: number): string {
-    if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
-    return `${n}`;
-  }
-
-  // Star count
-  cachedJson(API_REPO, 'ab_repo').then((repo) => {
-    if (repo && typeof repo.stargazers_count === 'number') {
-      const el = document.getElementById('star-count');
-      if (el) el.textContent = formatStars(repo.stargazers_count);
-    }
-  });
 
   // Latest release → version labels + direct download links per platform.
   // Asset-filename knowledge lives in consts.PLATFORMS[].assetMatch (preference order).
