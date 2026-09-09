@@ -38,6 +38,15 @@ const preset = computed(
   () => PROVIDERS.find((p) => p.id === provider.value) ?? PROVIDERS[0],
 );
 
+const canTest = computed(
+  () =>
+    form.accessKeyId.trim() !== "" &&
+    // When editing, a blank secret falls back to the stored one on the server.
+    (editing.value || form.secretAccessKey.trim() !== "") &&
+    form.region.trim() !== "" &&
+    (!preset.value.showEndpoint || (form.endpointUrl?.trim() ?? "") !== ""),
+);
+
 function selectProvider(id: ProviderId) {
   provider.value = id;
   const p = preset.value;
@@ -403,8 +412,9 @@ onMounted(() => conns.refresh());
           </button>
           <button
             type="button"
-            :disabled="testing"
-            class="flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
+            :disabled="testing || !canTest"
+            :title="canTest ? undefined : 'Fill in the connection details first'"
+            class="flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
             @click="testConnection"
           >
             <ArrowPathIcon

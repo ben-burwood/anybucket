@@ -223,10 +223,20 @@ pub async fn set_active_connection(
 
 /// Verify credentials/endpoint by listing buckets, persisting nothing.
 /// Returns the number of buckets visible to the credentials.
-pub async fn test_connection(Json(req): Json<TestConnectionReq>) -> ApiResult<u32> {
+pub async fn test_connection(
+    State(state): State<SharedState>,
+    Json(req): Json<TestConnectionReq>,
+) -> ApiResult<u32> {
     let input = req.input;
-    let conn = input.to_connection(input.id.clone().unwrap_or_default());
-    let client = s3::build_client(&conn, &input.secret_access_key).await?;
+    let id = input.id.clone().unwrap_or_default();
+    // Editing with a blank secret means "use the one already stored" — mirror save semantics.
+    let secret = if input.secret_access_key.is_empty() {
+        state.lock().await.store.secret_for(&id)?
+    } else {
+        input.secret_access_key.clone()
+    };
+    let conn = input.to_connection(id);
+    let client = s3::build_client(&conn, &secret).await?;
     let buckets = ops::list_buckets(&client).await?;
     Ok(Json(buckets.len() as u32))
 }
