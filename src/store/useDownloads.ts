@@ -10,6 +10,7 @@ export interface DownloadTask {
   bucket: string;
   key: string;
   name: string;
+  dest: string;
   downloaded: number;
   total: number | null;
   done: boolean;
@@ -54,6 +55,7 @@ async function start(
     bucket,
     key,
     name,
+    dest,
     downloaded: 0,
     total: null,
     done: false,
