@@ -10,13 +10,30 @@ use anybucket_core::error::{AppError, AppResult};
 /// Each secret is keyed by the connection's `id`.
 const KEYCHAIN_SERVICE: &str = "co.anybucket";
 
-/// [`SecretStore`] implementation using the platform keychain via the `keyring`
-/// crate (Windows Credential Manager, macOS Keychain, Linux Secret Service).
+/// Register the platform credential store as keyring-core's default.
+///
+/// Must be called once before any [`KeyringStore`] operation; [`Entry::new`]
+/// panics if no default store is set. Windows uses the Credential Manager,
+/// macOS the login Keychain, Linux the Secret Service.
+pub fn init() -> AppResult<()> {
+    #[cfg(windows)]
+    let store = windows_native_keyring_store::Store::new().map_err(kc)?;
+    #[cfg(target_os = "macos")]
+    let store = apple_native_keyring_store::keychain::Store::new().map_err(kc)?;
+    #[cfg(target_os = "linux")]
+    let store = zbus_secret_service_keyring_store::Store::new().map_err(kc)?;
+
+    keyring_core::set_default_store(store);
+    Ok(())
+}
+
+/// [`SecretStore`] implementation using the platform keychain via keyring-core
+/// (Windows Credential Manager, macOS Keychain, Linux Secret Service).
 pub struct KeyringStore;
 
 impl KeyringStore {
-    fn entry(id: &str) -> AppResult<keyring::Entry> {
-        keyring::Entry::new(KEYCHAIN_SERVICE, id).map_err(kc)
+    fn entry(id: &str) -> AppResult<keyring_core::Entry> {
+        keyring_core::Entry::new(KEYCHAIN_SERVICE, id).map_err(kc)
     }
 }
 
@@ -35,7 +52,7 @@ impl SecretStore for KeyringStore {
 }
 
 /// Map a keyring error into the shared error type. Kept local because the orphan
-/// rule forbids a `From<keyring::Error>` impl for `anybucket_core`'s `AppError`.
-fn kc(err: keyring::Error) -> AppError {
+/// rule forbids a `From<keyring_core::Error>` impl for `anybucket_core`'s `AppError`.
+fn kc(err: keyring_core::Error) -> AppError {
     AppError::Secret(err.to_string())
 }
