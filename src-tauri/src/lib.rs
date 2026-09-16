@@ -15,6 +15,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
+            secret_store::init()?;
+
             // Connection metadata lives under the OS app-config dir; secrets are
             // kept in the keychain (see connections module).
             let config_dir = app.path().app_config_dir()?;
