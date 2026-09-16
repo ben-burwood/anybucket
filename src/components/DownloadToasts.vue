@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useDownloads } from "../store/useDownloads";
+import { isTauri } from "../platform";
 import { formatSize } from "../utils/format";
 import ProgressBar from "./ProgressBar.vue";
 import ToastCountdown from "./ToastCountdown.vue";
@@ -11,6 +13,24 @@ const downloads = useDownloads();
 function percent(t: DownloadTask): number | null {
   if (!t.total) return null;
   return Math.min(100, Math.round((t.downloaded / t.total) * 100));
+}
+
+// Open the downloaded file with the OS default application.
+async function open(t: DownloadTask): Promise<void> {
+  try {
+    await openPath(t.dest);
+  } catch {
+    /* nothing actionable if the OS refuses to open it */
+  }
+}
+
+// Reveal the downloaded file in the system file explorer.
+async function showInExplorer(t: DownloadTask): Promise<void> {
+  try {
+    await revealItemInDir(t.dest);
+  } catch {
+    /* nothing actionable if the OS refuses to reveal it */
+  }
 }
 
 const tasks = computed(() => downloads.state.tasks);
@@ -52,6 +72,25 @@ const tasks = computed(() => downloads.state.tasks);
             <template v-if="t.total"> / {{ formatSize(t.total) }} </template>
           </span>
         </p>
+      </div>
+
+      <!-- Actions for a completed, successful download (desktop only) -->
+      <div
+        v-if="isTauri && t.done && !t.error"
+        class="mt-2 flex items-center gap-2"
+      >
+        <button
+          class="rounded border border-slate-200 px-2 py-1 text-xs font-medium hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-700"
+          @click="open(t)"
+        >
+          Open
+        </button>
+        <button
+          class="rounded border border-slate-200 px-2 py-1 text-xs font-medium hover:bg-slate-50 dark:border-night-700 dark:hover:bg-night-700"
+          @click="showInExplorer(t)"
+        >
+          Show in Explorer
+        </button>
       </div>
 
       <ToastCountdown v-if="t.done" />

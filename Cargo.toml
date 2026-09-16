@@ -3,7 +3,7 @@ resolver = "2"
 members = ["anybucket-core", "anybucket-server", "src-tauri"]
 
 [workspace.package]
-version = "1.0.1"
+version = "1.0.2"
 authors = ["Ben Burwood"]
 license = "MIT"
 edition = "2021"
