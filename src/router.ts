@@ -7,6 +7,7 @@ import {
 import BucketList from "./components/BucketList.vue";
 import ConnectionManager from "./components/ConnectionManager.vue";
 import ObjectBrowser from "./components/ObjectBrowser.vue";
+import { useConnections } from "./store/useConnections";
 
 const routes: RouteRecordRaw[] = [
   { path: "/", name: "buckets", component: BucketList, meta: { sidebar: false } },
@@ -28,4 +29,17 @@ export const router = createRouter({
   // Hash history avoids the webview trying to hit a dev server for deep links.
   history: createWebHashHistory(),
   routes,
+});
+
+// Single-bucket connections have no bucket list; send the landing route straight
+// into the dedicated bucket. Awaiting the connections load avoids a flash of the
+// bucket-list page on cold start (the active connection loads asynchronously).
+router.beforeEach(async (to) => {
+  const conns = useConnections();
+  await conns.ensureLoaded();
+  const bucket = conns.state.active?.bucket;
+  if (bucket && to.name === "buckets") {
+    return { name: "browse", params: { bucket } };
+  }
+  return true;
 });

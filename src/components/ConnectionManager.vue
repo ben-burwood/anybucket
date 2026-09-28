@@ -70,6 +70,7 @@ const emptyForm = (): ConnectionInput => ({
   secretAccessKey: "",
   mode: "readOnly",
   admin: false,
+  bucket: "",
 });
 
 const form = reactive<ConnectionInput>(emptyForm());
@@ -98,6 +99,7 @@ function editConnection(c: Connection) {
     secretAccessKey: "", // never returned; blank keeps the existing secret
     mode: c.mode,
     admin: c.admin,
+    bucket: c.bucket ?? "",
   });
   provider.value = inferProvider(c);
   editing.value = true;
@@ -110,10 +112,13 @@ async function testConnection() {
   formError.value = null;
   testing.value = true;
   try {
-    const count = await api.testConnection(payload());
+    const p = payload();
+    await api.testConnection(p);
     testStatus.value = {
       ok: true,
-      message: `Success — ${count} bucket${count === 1 ? "" : "s"} visible.`,
+      message: p.bucket
+        ? `Success — bucket "${p.bucket}" is reachable.`
+        : "Success — credentials verified.",
     };
   } catch (e) {
     testStatus.value = { ok: false, message: errorMessage(e) };
@@ -126,6 +131,7 @@ function payload(): ConnectionInput {
   return {
     ...form,
     endpointUrl: form.endpointUrl?.trim() ? form.endpointUrl.trim() : null,
+    bucket: form.bucket?.trim() ? form.bucket.trim() : null,
   };
 }
 
@@ -264,6 +270,20 @@ onMounted(() => conns.refresh());
             placeholder="Local MinIO"
             class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-night-700 dark:bg-night-900"
           />
+        </label>
+
+        <label class="block">
+          <span class="mb-1 block text-xs font-medium text-slate-500">
+            Dedicated bucket <span class="text-slate-400">(optional)</span>
+          </span>
+          <input
+            v-model="form.bucket"
+            placeholder="my-bucket"
+            class="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-night-700 dark:bg-night-900"
+          />
+          <span class="mt-1 block text-[11px] text-slate-400">
+            Scope this connection to one bucket.
+          </span>
         </label>
 
         <label v-if="preset.showEndpoint" class="block">

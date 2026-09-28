@@ -21,7 +21,7 @@ export function setActiveConnection(id: string | null): Promise<void> {
   return invoke("set_active_connection", { id });
 }
 
-/** Returns the number of buckets visible to the credentials on success. */
-export function testConnection(input: ConnectionInput): Promise<number> {
+/** Verifies the credentials; resolves `true` on success, rejects on failure. */
+export function testConnection(input: ConnectionInput): Promise<boolean> {
   return invoke("test_connection", { input });
 }

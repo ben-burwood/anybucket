@@ -51,6 +51,9 @@ pub struct Connection {
     /// Whether bucket administration (create/delete buckets) is permitted.
     #[serde(default)]
     pub admin: bool,
+    /// When set, this connection is scoped to a single bucket. `None` = account-wide (ListBuckets).
+    #[serde(default)]
+    pub bucket: Option<String>,
 }
 
 /// Payload from the frontend when creating/updating a connection.
@@ -72,6 +75,8 @@ pub struct ConnectionInput {
     pub mode: AccessMode,
     #[serde(default)]
     pub admin: bool,
+    #[serde(default)]
+    pub bucket: Option<String>,
 }
 
 impl ConnectionInput {
@@ -86,6 +91,7 @@ impl ConnectionInput {
             access_key_id: self.access_key_id.clone(),
             mode: self.mode,
             admin: self.admin,
+            bucket: normalize_bucket(self.bucket.clone()),
         }
     }
 }
@@ -210,4 +216,9 @@ fn normalize_endpoint(endpoint: Option<String>) -> Option<String> {
     endpoint
         .map(|e| e.trim().to_string())
         .filter(|e| !e.is_empty())
+}
+
+/// Trim and treat blank/whitespace bucket strings as "no dedicated bucket".
+fn normalize_bucket(bucket: Option<String>) -> Option<String> {
+    bucket.map(|b| b.trim().to_string()).filter(|b| !b.is_empty())
 }

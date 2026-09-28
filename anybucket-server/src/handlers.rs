@@ -221,12 +221,13 @@ pub async fn set_active_connection(
     Ok(Json(()))
 }
 
-/// Verify credentials/endpoint by listing buckets, persisting nothing.
-/// Returns the number of buckets visible to the credentials.
+/// Verify credentials/endpoint - returns `true` on success (any error surfaces as an `ApiError`).
+/// - Normal connection lists buckets (needs account-level ListAllMyBuckets)
+/// - Single-bucket connection probes that one bucket with a scoped ListObjectsV2 (needs only s3:ListBucket on it)
 pub async fn test_connection(
     State(state): State<SharedState>,
     Json(req): Json<TestConnectionReq>,
-) -> ApiResult<u32> {
+) -> ApiResult<bool> {
     let input = req.input;
     let id = input.id.clone().unwrap_or_default();
     // Editing with a blank secret means "use the one already stored" — mirror save semantics.
@@ -237,8 +238,23 @@ pub async fn test_connection(
     };
     let conn = input.to_connection(id);
     let client = s3::build_client(&conn, &secret).await?;
-    let buckets = ops::list_buckets(&client).await?;
-    Ok(Json(buckets.len() as u32))
+    match &conn.bucket {
+        Some(bucket) => {
+            let params = ListParams {
+                bucket: bucket.clone(),
+                prefix: String::new(),
+                filter: None,
+                versions: None,
+                continuation_token: None,
+                max_keys: Some(1),
+            };
+            ops::list_objects(&client, &params).await?;
+        }
+        None => {
+            ops::list_buckets(&client).await?;
+        }
+    }
+    Ok(Json(true))
 }
 
 // ---------------------------------------------------------------------------
