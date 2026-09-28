@@ -908,14 +908,16 @@ watch(
         class="flex items-center gap-1 border-b border-slate-200 px-4 py-2 text-sm dark:border-night-800"
       >
         <div class="flex min-w-0 items-center gap-1 overflow-hidden">
-          <RouterLink
-            to="/"
-            class="shrink-0 text-slate-500 hover:text-emerald-600"
-            title="All buckets"
-          >
-            Buckets
-          </RouterLink>
-          <span class="shrink-0 text-slate-300">/</span>
+          <template v-if="!conns.singleBucket.value">
+            <RouterLink
+              to="/"
+              class="shrink-0 text-slate-500 hover:text-emerald-600"
+              title="All buckets"
+            >
+              Buckets
+            </RouterLink>
+            <span class="shrink-0 text-slate-300">/</span>
+          </template>
           <button
             class="shrink-0 whitespace-nowrap font-medium hover:text-emerald-600"
             :title="bucket"

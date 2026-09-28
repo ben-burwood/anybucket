@@ -15,6 +15,7 @@ export interface Connection {
   accessKeyId: string;
   mode: AccessMode;
   admin: boolean;
+  bucket: string | null;
 }
 
 /** Payload for creating/updating a connection — carries the secret. */
@@ -28,6 +29,7 @@ export interface ConnectionInput {
   secretAccessKey: string;
   mode: AccessMode;
   admin: boolean;
+  bucket: string | null;
 }
 
 export interface Bucket {

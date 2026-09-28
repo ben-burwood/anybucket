@@ -67,14 +67,12 @@ pub async fn set_active_connection(id: Option<String>, state: Shared<'_>) -> App
     Ok(())
 }
 
-/// Verify credentials/endpoint by listing buckets, without persisting anything.
-/// Returns the number of buckets visible to the credentials.
 #[tauri::command]
-pub async fn test_connection(input: ConnectionInput) -> AppResult<u32> {
+pub async fn test_connection(input: ConnectionInput) -> AppResult<bool> {
     let conn = input.to_connection(input.id.clone().unwrap_or_default());
     let client = s3::build_client(&conn, &input.secret_access_key).await?;
-    let buckets = ops::list_buckets(&client).await?;
-    Ok(buckets.len() as u32)
+    ops::verify_connection(&client, conn.bucket.as_deref()).await?;
+    Ok(true)
 }
 
 // ---------------------------------------------------------------------------

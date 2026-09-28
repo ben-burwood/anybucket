@@ -21,7 +21,9 @@ const sidebar = useSidebar();
 const confirmDialog = useConfirm();
 const route = useRoute();
 
-const sidebarAllowed = computed(() => route.meta.sidebar !== false);
+const sidebarAllowed = computed(
+  () => route.meta.sidebar !== false && !conns.singleBucket.value,
+);
 const showSidebar = computed(
   () => sidebarAllowed.value && !sidebar.state.collapsed,
 );

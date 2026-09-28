@@ -28,6 +28,16 @@ const canDelete = computed(() => state.active?.mode === "readWriteDelete");
 
 const canAdmin = computed(() => state.active?.admin === true);
 
+/** The dedicated bucket of the active connection, or null in normal mode. */
+const singleBucket = computed(() => state.active?.bucket ?? null);
+
+/** Idempotent initial load, so the router guard can await connections once. */
+let loadPromise: Promise<void> | null = null;
+function ensureLoaded(): Promise<void> {
+  if (!loadPromise) loadPromise = refresh();
+  return loadPromise;
+}
+
 async function refresh(): Promise<void> {
   state.loading = true;
   state.error = null;
@@ -76,6 +86,8 @@ export function useConnections() {
     canWrite,
     canDelete,
     canAdmin,
+    singleBucket,
+    ensureLoaded,
     refresh,
     save,
     remove,

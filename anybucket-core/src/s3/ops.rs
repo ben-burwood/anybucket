@@ -17,6 +17,29 @@ const DEFAULT_MAX_KEYS: i32 = 1000;
 /// Maximum objects per `DeleteObjects` request (the S3 API limit).
 const DELETE_BATCH_SIZE: usize = 1000;
 
+/// Verify credentials/endpoint - returns `true` on success (any error surfaces as an `ApiError`).
+/// - Normal connection lists buckets (needs account-level ListAllMyBuckets)
+/// - Single-bucket connection probes that one bucket with a scoped ListObjectsV2 (needs only s3:ListBucket on it)
+pub async fn verify_connection(client: &Client, bucket: Option<&str>) -> AppResult<()> {
+    match bucket {
+        Some(bucket) => {
+            let params = ListParams {
+                bucket: bucket.to_string(),
+                prefix: String::new(),
+                filter: None,
+                versions: None,
+                continuation_token: None,
+                max_keys: Some(1),
+            };
+            list_objects(client, &params).await?;
+        }
+        None => {
+            list_buckets(client).await?;
+        }
+    }
+    Ok(())
+}
+
 /// List all buckets visible to the active credentials.
 pub async fn list_buckets(client: &Client) -> AppResult<Vec<Bucket>> {
     let out = client.list_buckets().send().await?;
