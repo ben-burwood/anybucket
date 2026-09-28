@@ -1,10 +1,10 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["anybucket-core", "anybucket-server", "src-tauri"]
 
 [workspace.package]
 version = "1.1.0"
 authors = ["Ben Burwood"]
 license = "MIT"
-edition = "2021"
-rust-version = "1.77.2"
+edition = "2024"
+rust-version = "1.97"
