@@ -71,22 +71,7 @@ pub async fn set_active_connection(id: Option<String>, state: Shared<'_>) -> App
 pub async fn test_connection(input: ConnectionInput) -> AppResult<bool> {
     let conn = input.to_connection(input.id.clone().unwrap_or_default());
     let client = s3::build_client(&conn, &input.secret_access_key).await?;
-    match &conn.bucket {
-        Some(bucket) => {
-            let params = ListParams {
-                bucket: bucket.clone(),
-                prefix: String::new(),
-                filter: None,
-                versions: None,
-                continuation_token: None,
-                max_keys: Some(1),
-            };
-            ops::list_objects(&client, &params).await?;
-        }
-        None => {
-            ops::list_buckets(&client).await?;
-        }
-    }
+    ops::verify_connection(&client, conn.bucket.as_deref()).await?;
     Ok(true)
 }
 

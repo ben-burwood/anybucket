@@ -238,22 +238,7 @@ pub async fn test_connection(
     };
     let conn = input.to_connection(id);
     let client = s3::build_client(&conn, &secret).await?;
-    match &conn.bucket {
-        Some(bucket) => {
-            let params = ListParams {
-                bucket: bucket.clone(),
-                prefix: String::new(),
-                filter: None,
-                versions: None,
-                continuation_token: None,
-                max_keys: Some(1),
-            };
-            ops::list_objects(&client, &params).await?;
-        }
-        None => {
-            ops::list_buckets(&client).await?;
-        }
-    }
+    ops::verify_connection(&client, conn.bucket.as_deref()).await?;
     Ok(Json(true))
 }
 
