@@ -7,6 +7,7 @@ import { errorMessage, type Bucket } from "../types";
 import { formatDate } from "../utils/format";
 import ConfirmModal from "./ConfirmModal.vue";
 import CreateBucketModal from "./CreateBucketModal.vue";
+import RefreshButton from "./RefreshButton.vue";
 import { TrashIcon } from "@heroicons/vue/20/solid";
 
 const { conns, buckets, loading, refreshing, error, noConnection, open, refresh } =
@@ -58,7 +59,6 @@ async function confirmDelete() {
     <div class="mb-4 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <h1 class="text-lg font-semibold">Buckets</h1>
-        <span v-if="refreshing" class="text-xs text-slate-400">Refreshing…</span>
       </div>
       <div class="flex items-center gap-2">
         <button
@@ -68,13 +68,7 @@ async function confirmDelete() {
         >
           New bucket
         </button>
-        <button
-          class="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-night-700 dark:text-slate-300 dark:hover:bg-night-800"
-          :disabled="loading || refreshing"
-          @click="refresh()"
-        >
-          Refresh
-        </button>
+        <RefreshButton :busy="refreshing" :disabled="loading" @refresh="refresh()" />
       </div>
     </div>
 

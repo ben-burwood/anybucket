@@ -44,7 +44,7 @@ import ObjectDetailPanel from "./ObjectDetailPanel.vue";
 import BucketMetricsPanel from "./BucketMetricsPanel.vue";
 import ConfirmModal from "./ConfirmModal.vue";
 import DestinationPicker from "./DestinationPicker.vue";
-import { ArrowPathIcon } from "@heroicons/vue/20/solid";
+import RefreshButton from "./RefreshButton.vue";
 
 const props = defineProps<{ bucket: string; prefix: string }>();
 const router = useRouter();
@@ -1190,18 +1190,7 @@ watch(
           {{ counts.files }} file{{ counts.files === 1 ? "" : "s"
           }}{{ counts.more ? "+" : "" }}
         </span>
-        <button
-          class="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50 disabled:opacity-60 dark:border-night-700 dark:hover:bg-night-800"
-          title="Refresh"
-          :disabled="state.loading"
-          @click="refresh"
-        >
-          <ArrowPathIcon
-            class="h-3.5 w-3.5"
-            :class="{ 'animate-spin': state.loading }"
-          />
-          Refresh
-        </button>
+        <RefreshButton :busy="state.loading" @refresh="refresh" />
       </div>
 
       <div
