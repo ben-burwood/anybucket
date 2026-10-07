@@ -7,7 +7,7 @@ import { ArrowPathIcon, ChevronLeftIcon } from "@heroicons/vue/20/solid";
 
 const route = useRoute();
 const sidebar = useSidebar();
-const { buckets, loading, refreshing, error, noConnection, open, refresh } =
+const { buckets, query, filtered, loading, refreshing, error, noConnection, open, refresh } =
   useActiveBuckets();
 
 const currentBucket = computed(() => (route.params.bucket as string) ?? "");
@@ -74,6 +74,30 @@ onBeforeUnmount(() => endResize?.());
       </div>
     </div>
 
+    <!-- Search (sticky, above the scrollable list) -->
+    <div
+      v-if="!noConnection && !loading && !error && buckets.length > 0"
+      class="relative shrink-0 border-b border-slate-200 p-2 dark:border-night-800"
+    >
+      <input
+        v-model="query"
+        type="text"
+        placeholder="Search buckets…"
+        spellcheck="false"
+        autocomplete="off"
+        class="w-full rounded border border-slate-200 py-1 pl-2 pr-6 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-night-700 dark:bg-night-800"
+        @keydown.esc="query = ''"
+      />
+      <button
+        v-if="query"
+        class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+        title="Clear search"
+        @click="query = ''"
+      >
+        ✕
+      </button>
+    </div>
+
     <!-- Body -->
     <div class="min-h-0 flex-1 overflow-auto p-2">
       <!-- No active connection -->
@@ -105,8 +129,15 @@ onBeforeUnmount(() => endResize?.());
         No buckets found.
       </div>
 
+      <div
+        v-else-if="filtered.length === 0"
+        class="px-2 py-6 text-center text-xs text-slate-400"
+      >
+        No matches.
+      </div>
+
       <ul v-else class="space-y-0.5">
-        <li v-for="b in buckets" :key="b.name">
+        <li v-for="b in filtered" :key="b.name">
           <button
             type="button"
             class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm"

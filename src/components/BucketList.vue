@@ -10,8 +10,18 @@ import CreateBucketModal from "./CreateBucketModal.vue";
 import RefreshButton from "./RefreshButton.vue";
 import { TrashIcon } from "@heroicons/vue/20/solid";
 
-const { conns, buckets, loading, refreshing, error, noConnection, open, refresh } =
-  useActiveBuckets();
+const {
+  conns,
+  buckets,
+  query,
+  filtered,
+  loading,
+  refreshing,
+  error,
+  noConnection,
+  open,
+  refresh,
+} = useActiveBuckets();
 
 // --- Create bucket ---------------------------------------------------------
 const createOpen = ref(false);
@@ -61,6 +71,29 @@ async function confirmDelete() {
         <h1 class="text-lg font-semibold">Buckets</h1>
       </div>
       <div class="flex items-center gap-2">
+        <!-- Search -->
+        <div
+          v-if="!noConnection && !loading && !error && buckets.length > 0"
+          class="relative w-56 max-w-full"
+        >
+          <input
+            v-model="query"
+            type="text"
+            placeholder="Search buckets…"
+            spellcheck="false"
+            autocomplete="off"
+            class="w-full rounded border border-slate-200 py-1 pl-2 pr-6 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-night-700 dark:bg-night-800"
+            @keydown.esc="query = ''"
+          />
+          <button
+            v-if="query"
+            class="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            title="Clear search"
+            @click="query = ''"
+          >
+            ✕
+          </button>
+        </div>
         <button
           v-if="conns.canAdmin.value"
           class="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-500"
@@ -107,9 +140,16 @@ async function confirmDelete() {
       <span class="font-medium">{{ conns.state.active?.name }}</span>.
     </div>
 
+    <div
+      v-else-if="filtered.length === 0"
+      class="py-10 text-center text-sm text-slate-400"
+    >
+      No buckets match <span class="font-medium">“{{ query }}”</span>.
+    </div>
+
     <ul v-else class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
       <li
-        v-for="b in buckets"
+        v-for="b in filtered"
         :key="b.name"
         class="group cursor-pointer rounded-lg border border-slate-200 bg-white p-4 transition hover:border-emerald-300 hover:shadow-sm dark:border-night-800 dark:bg-night-900 dark:hover:border-emerald-700"
         @click="open(b)"
