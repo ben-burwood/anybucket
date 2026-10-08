@@ -12,8 +12,9 @@ const open = ref(false);
 const root = ref<HTMLElement | null>(null);
 
 function toggle() {
-  // With no connections there is nothing to switch — go straight to management.
-  if (conns.state.connections.length === 0) {
+  // With no connections there is nothing to switch — go straight to management
+  // (but in config mode management is disabled, so just open the empty dropdown).
+  if (conns.state.connections.length === 0 && !conns.configMode.value) {
     goManage();
     return;
   }
@@ -91,14 +92,16 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
         </span>
       </button>
 
-      <div class="my-1 border-t border-slate-100 dark:border-night-800" />
-      <button
-        type="button"
-        class="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 dark:hover:bg-night-800"
-        @click.stop="goManage"
-      >
-        Manage connections…
-      </button>
+      <template v-if="!conns.configMode.value">
+        <div class="my-1 border-t border-slate-100 dark:border-night-800" />
+        <button
+          type="button"
+          class="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 dark:hover:bg-night-800"
+          @click.stop="goManage"
+        >
+          Manage connections…
+        </button>
+      </template>
     </div>
   </div>
 </template>

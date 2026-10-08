@@ -37,6 +37,10 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   const conns = useConnections();
   await conns.ensureLoaded();
+  // In config mode connections are managed by the server; the management page is disabled.
+  if (to.name === "connections" && conns.configMode.value) {
+    return { name: "buckets" };
+  }
   const bucket = conns.state.active?.bucket;
   if (bucket && to.name === "buckets") {
     return { name: "browse", params: { bucket } };

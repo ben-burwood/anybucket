@@ -1,6 +1,7 @@
 mod config;
 mod error;
 mod handlers;
+mod presets;
 mod secret_store;
 
 use std::sync::Arc;
@@ -35,8 +36,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::from_env();
 
-    let secrets = FileSecretStore::new(&config.config_dir)?;
-    let store = ConnectionStore::load(&config.config_dir, Box::new(secrets))?;
+    // Config mode: when the preset file exists, run entirely from it — ephemeral, read-only, and
+    // without requiring ANYBUCKET_MASTER_KEY (no secrets are persisted).
+    let store = if config.config_file.exists() {
+        let presets = presets::load(&config.config_file)?;
+        tracing::info!(
+            "config mode: loaded {} connection(s) from {} — connection management is disabled",
+            presets.connections.len(),
+            config.config_file.display()
+        );
+        ConnectionStore::from_presets(presets.connections, presets.secrets)
+    } else {
+        let secrets = FileSecretStore::new(&config.config_dir)?;
+        ConnectionStore::load(&config.config_dir, Box::new(secrets))?
+    };
     let state: SharedState = Arc::new(Mutex::new(AppState::new(store)));
 
     let app = build_router(state, &config);
@@ -54,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn build_router(state: SharedState, config: &Config) -> Router {
     let api = Router::new()
         .route("/health", get(handlers::health))
+        .route("/capabilities", post(handlers::capabilities))
         // Connection management
         .route("/list_connections", post(handlers::list_connections))
         .route(

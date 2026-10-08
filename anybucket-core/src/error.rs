@@ -41,6 +41,9 @@ pub enum AppError {
     #[error("the active connection does not permit bucket administration")]
     AdminNotAllowed,
 
+    #[error("connection management is disabled while running from a config file")]
+    ConfigModeReadOnly,
+
     #[error("a bucket named '{0}' already exists")]
     BucketAlreadyExists(String),
 
@@ -72,6 +75,7 @@ impl AppError {
             AppError::Upload(_) => "upload",
             AppError::DeleteNotAllowed => "delete_not_allowed",
             AppError::AdminNotAllowed => "admin_not_allowed",
+            AppError::ConfigModeReadOnly => "config_mode_read_only",
             AppError::BucketAlreadyExists(_) => "bucket_already_exists",
             AppError::BucketNotEmpty(_) => "bucket_not_empty",
             AppError::Delete(_) => "delete",

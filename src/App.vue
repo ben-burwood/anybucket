@@ -24,6 +24,11 @@ const route = useRoute();
 const sidebarAllowed = computed(
   () => route.meta.sidebar !== false && !conns.singleBucket.value,
 );
+// In config mode with a single preset there is nothing to switch, so hide the switcher entirely;
+// with several presets it stays, as a read-only selector.
+const showSwitcher = computed(
+  () => !conns.configMode.value || conns.state.connections.length > 1,
+);
 const showSidebar = computed(
   () => sidebarAllowed.value && !sidebar.state.collapsed,
 );
@@ -70,7 +75,7 @@ function onTitlebarDblClick(e: MouseEvent) {
 
       <div class="flex h-full items-center gap-2" data-tauri-drag-region>
         <ThemeToggle />
-        <ConnectionSwitcher />
+        <ConnectionSwitcher v-if="showSwitcher" />
         <WindowControls v-if="isTauri" class="ml-1 h-full" />
       </div>
     </header>

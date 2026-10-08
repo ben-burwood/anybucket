@@ -1,5 +1,6 @@
 import { computed, reactive, readonly } from "vue";
 import * as api from "../api/connections";
+import { isWeb } from "../platform";
 import { errorMessage, type Connection, type ConnectionInput } from "../types";
 import { useBuckets } from "./useBuckets";
 import { useBucketMetrics } from "./useBucketMetrics";
@@ -9,6 +10,8 @@ interface ConnectionsState {
   active: Connection | null;
   loading: boolean;
   error: string | null;
+  /** When true, connections are supplied by a server config file and are read-only. */
+  configMode: boolean;
 }
 
 const state = reactive<ConnectionsState>({
@@ -16,7 +19,11 @@ const state = reactive<ConnectionsState>({
   active: null,
   loading: false,
   error: null,
+  configMode: false,
 });
+
+/** True when the server runs from a config file: all connection management is disabled. */
+const configMode = computed(() => state.configMode);
 
 const canWrite = computed(
   () =>
@@ -42,12 +49,18 @@ async function refresh(): Promise<void> {
   state.loading = true;
   state.error = null;
   try {
-    const [connections, active] = await Promise.all([
+    // `capabilities` is a web-server-only command; on the Tauri desktop build there is no config
+    // mode, so skip the call (it would error as an unknown command).
+    const [connections, active, caps] = await Promise.all([
       api.listConnections(),
       api.getActiveConnection(),
+      isWeb
+        ? api.getCapabilities()
+        : Promise.resolve({ configMode: false }),
     ]);
     state.connections = connections;
     state.active = active;
+    state.configMode = caps.configMode;
   } catch (e) {
     state.error = errorMessage(e);
   } finally {
@@ -62,6 +75,9 @@ function invalidateCaches(id: string): void {
 }
 
 async function save(input: ConnectionInput): Promise<Connection> {
+  if (state.configMode) {
+    throw new Error("Connection management is disabled while running from a config file.");
+  }
   const conn = await api.saveConnection(input);
   invalidateCaches(conn.id);
   await refresh();
@@ -69,6 +85,9 @@ async function save(input: ConnectionInput): Promise<Connection> {
 }
 
 async function remove(id: string): Promise<void> {
+  if (state.configMode) {
+    throw new Error("Connection management is disabled while running from a config file.");
+  }
   await api.deleteConnection(id);
   invalidateCaches(id);
   await refresh();
@@ -87,6 +106,7 @@ export function useConnections() {
     canDelete,
     canAdmin,
     singleBucket,
+    configMode,
     ensureLoaded,
     refresh,
     save,

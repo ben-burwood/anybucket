@@ -1,6 +1,16 @@
 import { invoke } from "./transport";
 import type { Connection, ConnectionInput } from "../types";
 
+/** Runtime capabilities reported by the server. */
+export interface Capabilities {
+  /** When true, connections come from a config file and management is disabled. */
+  configMode: boolean;
+}
+
+export function getCapabilities(): Promise<Capabilities> {
+  return invoke("capabilities");
+}
+
 export function listConnections(): Promise<Connection[]> {
   return invoke("list_connections");
 }
