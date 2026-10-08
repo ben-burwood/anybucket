@@ -46,6 +46,15 @@ pub async fn health() -> Json<serde_json::Value> {
     Json(json!({ "status": "ok" }))
 }
 
+/// Runtime capabilities the frontend reads at startup.
+///
+/// `configMode` is true when the server runs from a config file: connection management is disabled
+/// in the UI and mutations are rejected server-side.
+pub async fn capabilities(State(state): State<SharedState>) -> Json<serde_json::Value> {
+    let st = state.lock().await;
+    Json(json!({ "configMode": st.store.config_mode() }))
+}
+
 // ---------------------------------------------------------------------------
 // Request bodies (camelCase, matching the frontend `invoke` args)
 // ---------------------------------------------------------------------------

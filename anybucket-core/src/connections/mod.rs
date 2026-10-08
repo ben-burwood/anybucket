@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -107,10 +108,20 @@ struct ConnectionsFile {
 }
 
 /// Persistent store of connection metadata backed by a JSON file, with secrets delegated to a pluggable [`SecretStore`].
+///
+/// In **config mode** (constructed via [`ConnectionStore::from_presets`]) the store is ephemeral:
+/// connections come from a config file, secrets live only in `preset_secrets`, nothing is written to
+/// disk (`path`/`secrets` are `None`), and mutations are rejected.
 pub struct ConnectionStore {
-    path: PathBuf,
+    /// Where `connections.json` lives. `None` in config mode (nothing is persisted).
+    path: Option<PathBuf>,
     data: ConnectionsFile,
-    secrets: Box<dyn SecretStore>,
+    /// Backing secret store. `None` in config mode (secrets come from `preset_secrets`).
+    secrets: Option<Box<dyn SecretStore>>,
+    /// In-memory secrets for config-mode presets, keyed by connection id.
+    preset_secrets: HashMap<String, String>,
+    /// True when running from a config file: connections are read-only and ephemeral.
+    config_mode: bool,
 }
 
 impl ConnectionStore {
@@ -125,18 +136,48 @@ impl ConnectionStore {
             ConnectionsFile::default()
         };
         Ok(Self {
-            path,
+            path: Some(path),
             data,
-            secrets,
+            secrets: Some(secrets),
+            preset_secrets: HashMap::new(),
+            config_mode: false,
         })
     }
 
+    /// Build an ephemeral, read-only store from config-file presets.
+    ///
+    /// Nothing is persisted and no [`SecretStore`] (hence no master key) is required. The first
+    /// connection is selected active so single-connection deployments work out of the box; with
+    /// several presets the first is the default and the rest remain switchable.
+    pub fn from_presets(connections: Vec<Connection>, secrets: HashMap<String, String>) -> Self {
+        let active_id = connections.first().map(|c| c.id.clone());
+        Self {
+            path: None,
+            data: ConnectionsFile {
+                connections,
+                active_id,
+            },
+            secrets: None,
+            preset_secrets: secrets,
+            config_mode: true,
+        }
+    }
+
+    /// Whether the store is running from a config file (connection management disabled).
+    pub fn config_mode(&self) -> bool {
+        self.config_mode
+    }
+
+    /// Persist to disk. A no-op in config mode (nothing to persist).
     fn persist(&self) -> AppResult<()> {
-        if let Some(parent) = self.path.parent() {
+        let Some(path) = &self.path else {
+            return Ok(());
+        };
+        if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         let raw = serde_json::to_string_pretty(&self.data)?;
-        std::fs::write(&self.path, raw)?;
+        std::fs::write(path, raw)?;
         Ok(())
     }
 
@@ -158,6 +199,10 @@ impl ConnectionStore {
 
     /// Create or update a connection, writing the secret to the secret store.
     pub fn upsert(&mut self, input: ConnectionInput) -> AppResult<Connection> {
+        if self.config_mode {
+            return Err(AppError::ConfigModeReadOnly);
+        }
+
         let id = input
             .id
             .clone()
@@ -165,7 +210,9 @@ impl ConnectionStore {
 
         if !input.secret_access_key.is_empty() {
             // Overwrite current Secret with new supplied one
-            self.secrets.set(&id, &input.secret_access_key)?;
+            if let Some(secrets) = &self.secrets {
+                secrets.set(&id, &input.secret_access_key)?;
+            }
         }
 
         let conn = input.to_connection(id.clone());
@@ -180,6 +227,10 @@ impl ConnectionStore {
 
     /// Delete a connection and its stored secret.
     pub fn remove(&mut self, id: &str) -> AppResult<()> {
+        if self.config_mode {
+            return Err(AppError::ConfigModeReadOnly);
+        }
+
         let before = self.data.connections.len();
         self.data.connections.retain(|c| c.id != id);
         if self.data.connections.len() == before {
@@ -188,7 +239,9 @@ impl ConnectionStore {
         if self.data.active_id.as_deref() == Some(id) {
             self.data.active_id = None;
         }
-        let _ = self.secrets.delete(id);
+        if let Some(secrets) = &self.secrets {
+            let _ = secrets.delete(id);
+        }
         self.persist()?;
         Ok(())
     }
@@ -203,9 +256,21 @@ impl ConnectionStore {
         Ok(())
     }
 
-    /// Fetch the secret access key for a connection from the secret store.
+    /// Fetch the secret access key for a connection.
+    ///
+    /// In config mode this reads the in-memory preset secret; otherwise it delegates to the
+    /// backing [`SecretStore`].
     pub fn secret_for(&self, id: &str) -> AppResult<String> {
+        if self.config_mode {
+            return self
+                .preset_secrets
+                .get(id)
+                .cloned()
+                .ok_or_else(|| AppError::MissingCredentials(id.to_string()));
+        }
         self.secrets
+            .as_ref()
+            .ok_or_else(|| AppError::MissingCredentials(id.to_string()))?
             .get(id)
             .map_err(|_| AppError::MissingCredentials(id.to_string()))
     }

@@ -1,6 +1,14 @@
 import { invoke } from "./transport";
 import type { Connection, ConnectionInput } from "../types";
 
+export interface Capabilities {
+  configMode: boolean;
+}
+
+export function getCapabilities(): Promise<Capabilities> {
+  return invoke("capabilities");
+}
+
 export function listConnections(): Promise<Connection[]> {
   return invoke("list_connections");
 }

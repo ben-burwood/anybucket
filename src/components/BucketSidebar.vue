@@ -7,7 +7,7 @@ import { ArrowPathIcon, ChevronLeftIcon } from "@heroicons/vue/20/solid";
 
 const route = useRoute();
 const sidebar = useSidebar();
-const { buckets, query, filtered, loading, refreshing, error, noConnection, open, refresh } =
+const { conns, buckets, query, filtered, loading, refreshing, error, noConnection, open, refresh } =
   useActiveBuckets();
 
 const currentBucket = computed(() => (route.params.bucket as string) ?? "");
@@ -104,6 +104,7 @@ onBeforeUnmount(() => endResize?.());
       <div v-if="noConnection" class="px-2 py-6 text-center">
         <p class="mb-2 text-xs text-slate-500">No active connection.</p>
         <RouterLink
+          v-if="!conns.configMode.value"
           to="/connections"
           class="text-xs font-medium text-emerald-600 hover:underline"
         >

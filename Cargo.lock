@@ -95,7 +95,7 @@ dependencies = [
 
 [[package]]
 name = "anybucket"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "anybucket-core",
  "apple-native-keyring-store",
@@ -114,7 +114,7 @@ dependencies = [
 
 [[package]]
 name = "anybucket-core"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "aws-config",
  "aws-credential-types",
@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "anybucket-server"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "aes-gcm",
  "anybucket-core",
@@ -150,6 +150,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
+ "toml 0.8.2",
  "tower",
  "tower-http",
  "tracing",

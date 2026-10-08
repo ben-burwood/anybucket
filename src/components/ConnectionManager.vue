@@ -171,7 +171,20 @@ onMounted(() => conns.refresh());
 </script>
 
 <template>
-  <div class="grid h-full grid-cols-1 gap-6 overflow-auto px-6 py-5 lg:grid-cols-2">
+  <div
+    v-if="conns.configMode.value"
+    class="flex h-full items-center justify-center px-6 py-5"
+  >
+    <p
+      class="max-w-md rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-night-700"
+    >
+      Connections are managed by the server's config file. Connection management is disabled.
+    </p>
+  </div>
+  <div
+    v-else
+    class="grid h-full grid-cols-1 gap-6 overflow-auto px-6 py-5 lg:grid-cols-2"
+  >
     <!-- Saved connections -->
     <section>
       <h1 class="mb-4 text-lg font-semibold">Connections</h1>

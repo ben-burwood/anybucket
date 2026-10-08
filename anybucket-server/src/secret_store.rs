@@ -160,11 +160,17 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
 
         // Without the master key, the store refuses to build.
-        std::env::remove_var(ENV_MASTER_KEY);
+        // SAFETY: single-threaded test; both env mutations stay within this test (see the
+        // module comment on keeping these two cases in one test to avoid a cross-test race).
+        unsafe {
+            std::env::remove_var(ENV_MASTER_KEY);
+        }
         assert!(FileSecretStore::new(&dir).is_err());
 
         // With it set, set/get round-trips and the plaintext never hits disk.
-        std::env::set_var(ENV_MASTER_KEY, "test-master-key");
+        unsafe {
+            std::env::set_var(ENV_MASTER_KEY, "test-master-key");
+        }
         let store = FileSecretStore::new(&dir).expect("store builds with master key set");
 
         store.set("conn-1", "super-secret").unwrap();
