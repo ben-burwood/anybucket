@@ -171,8 +171,6 @@ onMounted(() => conns.refresh());
 </script>
 
 <template>
-  <!-- Config mode: connections are managed by the server config file, not the UI.
-       The router guard already redirects here, this is a defensive fallback. -->
   <div
     v-if="conns.configMode.value"
     class="flex h-full items-center justify-center px-6 py-5"

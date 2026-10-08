@@ -1,9 +1,7 @@
 import { invoke } from "./transport";
 import type { Connection, ConnectionInput } from "../types";
 
-/** Runtime capabilities reported by the server. */
 export interface Capabilities {
-  /** When true, connections come from a config file and management is disabled. */
   configMode: boolean;
 }
 

@@ -10,7 +10,6 @@ interface ConnectionsState {
   active: Connection | null;
   loading: boolean;
   error: string | null;
-  /** When true, connections are supplied by a server config file and are read-only. */
   configMode: boolean;
 }
 
@@ -22,7 +21,6 @@ const state = reactive<ConnectionsState>({
   configMode: false,
 });
 
-/** True when the server runs from a config file: all connection management is disabled. */
 const configMode = computed(() => state.configMode);
 
 const canWrite = computed(

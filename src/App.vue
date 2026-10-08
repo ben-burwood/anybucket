@@ -24,8 +24,6 @@ const route = useRoute();
 const sidebarAllowed = computed(
   () => route.meta.sidebar !== false && !conns.singleBucket.value,
 );
-// In config mode with a single preset there is nothing to switch, so hide the switcher entirely;
-// with several presets it stays, as a read-only selector.
 const showSwitcher = computed(
   () => !conns.configMode.value || conns.state.connections.length > 1,
 );
