@@ -24,9 +24,6 @@ const route = useRoute();
 const sidebarAllowed = computed(
   () => route.meta.sidebar !== false && !conns.singleBucket.value,
 );
-const showSwitcher = computed(
-  () => !conns.configMode.value || conns.state.connections.length > 1,
-);
 const showSidebar = computed(
   () => sidebarAllowed.value && !sidebar.state.collapsed,
 );
@@ -73,7 +70,7 @@ function onTitlebarDblClick(e: MouseEvent) {
 
       <div class="flex h-full items-center gap-2" data-tauri-drag-region>
         <ThemeToggle />
-        <ConnectionSwitcher v-if="showSwitcher" />
+        <ConnectionSwitcher />
         <WindowControls v-if="isTauri" class="ml-1 h-full" />
       </div>
     </header>

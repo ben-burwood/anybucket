@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useConnections } from "../store/useConnections";
 import AccessModeChip from "./AccessModeChip.vue";
@@ -11,7 +11,12 @@ const conns = useConnections();
 const open = ref(false);
 const root = ref<HTMLElement | null>(null);
 
+const interactive = computed(
+  () => !conns.configMode.value || conns.state.connections.length > 1,
+);
+
 function toggle() {
+  if (!interactive.value) return;
   // With no connections there is nothing to switch — go straight to management
   // (but in config mode management is disabled, so just open the empty dropdown).
   if (conns.state.connections.length === 0 && !conns.configMode.value) {
@@ -44,10 +49,15 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
 
 <template>
   <div ref="root" class="relative flex items-center gap-1">
-    <!-- Quick-select box -->
-    <button
-      type="button"
-      class="flex min-w-[10rem] items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm hover:bg-slate-50 dark:border-night-700 dark:bg-night-900 dark:hover:bg-night-800"
+    <component
+      :is="interactive ? 'button' : 'div'"
+      :type="interactive ? 'button' : undefined"
+      class="flex min-w-[10rem] items-center gap-2 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm dark:border-night-700 dark:bg-night-900"
+      :class="
+        interactive
+          ? 'cursor-pointer hover:bg-slate-50 dark:hover:bg-night-800'
+          : 'cursor-default'
+      "
       @click.stop="toggle"
     >
       <span
@@ -62,8 +72,11 @@ onBeforeUnmount(() => document.removeEventListener("click", onDocClick));
         :admin="conns.state.active?.admin ?? false"
         short
       />
-      <ChevronDownIcon class="h-3.5 w-3.5 shrink-0 text-slate-400" />
-    </button>
+      <ChevronDownIcon
+        v-if="interactive"
+        class="h-3.5 w-3.5 shrink-0 text-slate-400"
+      />
+    </component>
 
     <!-- Dropdown -->
     <div
