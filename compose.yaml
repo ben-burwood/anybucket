@@ -5,6 +5,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ANYBUCKET_MASTER_KEY: ${ANYBUCKET_MASTER_KEY:?set ANYBUCKET_MASTER_KEY in .env}
+      # Normal mode: required — encrypts connection secrets at rest. Set it in .env.
+      ANYBUCKET_MASTER_KEY: ${ANYBUCKET_MASTER_KEY:-}
+      # Config mode: secrets referenced from anybucket.toml via `secret_access_key_env` are read from the container environment.
+      # AWS_PROD_SECRET: ${AWS_PROD_SECRET:-}
     volumes:
-      - ./anybucket-config:/config
+      # Mounted at /config.
+      # Drop an `anybucket.toml` in ./config to enable CONFIG MODE.
+      - ./config:/config

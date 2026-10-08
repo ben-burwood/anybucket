@@ -43,12 +43,24 @@ It has **no built-in auth** and must run behind a reverse proxy providing auth +
 
 All configuration is via environment variables:
 
-| Variable               | Required | Default      | Purpose                                                        |
-|------------------------|----------|--------------|----------------------------------------------------------------|
-| `ANYBUCKET_MASTER_KEY` | **yes**  | —            | Encrypts stored S3 secret keys at rest. Server refuses to start without it. |
-| `ANYBUCKET_CONFIG_DIR` | no       | `/config`    | Where `connections.json` + `secrets.json` live.                |
-| `ANYBUCKET_STATIC_DIR` | no       | `/app/dist`  | The built SPA served as static files.                          |
-| `ANYBUCKET_PORT`       | no       | `8080`       | Port the server listens on inside the container.               |
+| Variable               | Required | Default                        | Purpose                                                        |
+|------------------------|----------|--------------------------------|----------------------------------------------------------------|
+| `ANYBUCKET_MASTER_KEY` | yes¹     | —                              | Encrypts stored S3 secret keys at rest. Server refuses to start without it. Not needed in config mode. |
+| `ANYBUCKET_CONFIG_DIR` | no       | `/config`                      | Where `connections.json` + `secrets.json` live.                |
+| `ANYBUCKET_CONFIG_FILE`| no       | `<config_dir>/anybucket.toml`  | Preset file. When it exists the server runs in **config mode** (see below). |
+| `ANYBUCKET_STATIC_DIR` | no       | `/app/dist`                    | The built SPA served as static files.                          |
+| `ANYBUCKET_PORT`       | no       | `8080`                         | Port the server listens on inside the container.               |
+
+¹ Required in normal mode. In config mode secrets are never persisted, so it is not used.
+
+### Preset connections (config mode)
+
+Instead of adding connections through the UI, you can declare them in a TOML file. 
+- connections are read from the file and held **in memory only** — never written to `connections.json`/`secrets.json`;
+- `ANYBUCKET_MASTER_KEY` is **not required**;
+- all connection management in the UI is disabled (connections become read-only).
+
+Each entry's secret can be given inline (`secret_access_key`) or by referencing an environment variable (`secret_access_key_env`).
 
 ### Data & backups
 

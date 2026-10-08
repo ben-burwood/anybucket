@@ -1,0 +1,29 @@
+# AnyBucket Server Config
+#
+# To enable CONFIG MODE, include this file as `anybucket.toml` in the mounted config directory.
+#
+# When present, the server:
+#   * reads connections from the file, held in memory only (never written to connections.json),
+#   * does NOT require ANYBUCKET_MASTER_KEY (no secrets are persisted),
+#   * disables all connection management in the web UI.
+#
+# Each [[connections]] entry becomes a connection with id `preset:<slug-of-name>`.
+
+[[connections]]
+name = "MinIO Local"
+endpoint_url = "http://localhost:9000"   # omit for real AWS S3
+region = "us-east-1"
+force_path_style = true                  # true for MinIO / Garage / RustFS
+access_key_id = "minioadmin"
+secret_access_key = "minioadmin"         # inline secret…
+mode = "readWrite"                        # readOnly (default) | readWrite | readWriteDelete
+admin = true                              # allow create/delete bucket
+# bucket = "my-bucket"                    # optional: scope this connection to a single bucket
+
+[[connections]]
+name = "AWS Prod"
+region = "eu-west-1"
+access_key_id = "AKIA..."
+secret_access_key_env = "AWS_PROD_SECRET" # …or reference an env var (wins if both are set).
+                                          # Pass it to the container via compose.yaml + .env.
+mode = "readOnly"
