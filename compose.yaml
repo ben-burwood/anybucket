@@ -7,9 +7,9 @@ services:
     environment:
       # Normal mode: required — encrypts connection secrets at rest. Set it in .env.
       ANYBUCKET_MASTER_KEY: ${ANYBUCKET_MASTER_KEY:-}
-      # Config mode: secrets referenced from anybucket.toml via `secret_access_key_env` are read from the container environment.
+      # Config mode: credentials referenced from anybucket.toml via `access_key_id_env` / `secret_access_key_env` are read from the container environment.
+      # AWS_PROD_ACCESS_KEY_ID: ${AWS_PROD_ACCESS_KEY_ID:-}
       # AWS_PROD_SECRET: ${AWS_PROD_SECRET:-}
     volumes:
-      # Mounted at /config.
       # Drop an `anybucket.toml` in ./config to enable CONFIG MODE.
-      - ./config:/config
+      - ./config/anybucket.toml:/config/anybucket.toml:ro

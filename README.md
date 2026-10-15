@@ -60,7 +60,7 @@ Instead of adding connections through the UI, you can declare them in a TOML fil
 - `ANYBUCKET_MASTER_KEY` is **not required**;
 - all connection management in the UI is disabled (connections become read-only).
 
-Each entry's secret can be given inline (`secret_access_key`) or by referencing an environment variable (`secret_access_key_env`).
+Each entry's access key id and secret can be given inline (`access_key_id`, `secret_access_key`) or by referencing an environment variable (`access_key_id_env`, `secret_access_key_env`). The env reference wins when both are set.
 
 ### Data & backups
 

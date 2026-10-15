@@ -2,9 +2,9 @@
 //!
 //! The orphan rule prevents implementing `IntoResponse` directly on the foreign `AppError`, so we newtype-wrap it.
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 
 use anybucket_core::error::AppError;
 

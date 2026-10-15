@@ -285,5 +285,7 @@ fn normalize_endpoint(endpoint: Option<String>) -> Option<String> {
 
 /// Trim and treat blank/whitespace bucket strings as "no dedicated bucket".
 fn normalize_bucket(bucket: Option<String>) -> Option<String> {
-    bucket.map(|b| b.trim().to_string()).filter(|b| !b.is_empty())
+    bucket
+        .map(|b| b.trim().to_string())
+        .filter(|b| !b.is_empty())
 }

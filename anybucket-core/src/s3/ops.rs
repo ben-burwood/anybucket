@@ -1,12 +1,12 @@
+use aws_sdk_s3::Client;
 use aws_sdk_s3::operation::get_object::GetObjectOutput;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{
     BucketLocationConstraint, CompletedMultipartUpload, CompletedPart, CreateBucketConfiguration,
     Delete, ObjectIdentifier,
 };
-use aws_sdk_s3::Client;
 use aws_smithy_types::date_time::Format;
-use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 
 use crate::error::{AppError, AppResult};
 use crate::models::{Bucket, Folder, ListParams, Listing, ObjectItem, ObjectMeta};

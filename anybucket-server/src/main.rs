@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use std::convert::Infallible;
 
+use axum::Router;
 use axum::body::{Body, Bytes};
 use axum::http::Request;
 use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
-use axum::Router;
 use tokio::sync::Mutex;
 use tower::service_fn;
 use tower_http::services::ServeDir;

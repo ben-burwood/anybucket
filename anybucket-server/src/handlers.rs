@@ -12,17 +12,17 @@ use std::future::Future;
 use std::io;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::body::Body;
 use axum::extract::{Query, State};
-use axum::http::{header, HeaderMap};
+use axum::http::{HeaderMap, header};
 use axum::response::Response;
-use axum::Json;
-use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tokio::sync::{mpsc, Mutex};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio::sync::{Mutex, mpsc};
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::io::StreamReader;
 
 use anybucket_core::connections::{Connection, ConnectionInput};
@@ -33,7 +33,7 @@ use anybucket_core::models::{
 };
 use anybucket_core::s3::{self, ops};
 use anybucket_core::state::AppState;
-use anybucket_core::{tasks, ProgressSink};
+use anybucket_core::{ProgressSink, tasks};
 
 use crate::error::ApiError;
 
@@ -269,7 +269,13 @@ pub async fn create_bucket(
     st.require_admin()?;
     let conn = st.active_connection()?;
     let client = st.active_client().await?;
-    ops::create_bucket(&client, &req.name, &conn.region, conn.endpoint_url.is_some()).await?;
+    ops::create_bucket(
+        &client,
+        &req.name,
+        &conn.region,
+        conn.endpoint_url.is_some(),
+    )
+    .await?;
     Ok(Json(()))
 }
 

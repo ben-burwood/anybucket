@@ -23,7 +23,7 @@ admin = true                              # allow create/delete bucket
 [[connections]]
 name = "AWS Prod"
 region = "eu-west-1"
-access_key_id = "AKIA..."
-secret_access_key_env = "AWS_PROD_SECRET" # …or reference an env var (wins if both are set).
+access_key_id_env = "AWS_PROD_ACCESS_KEY_ID" # …or reference env vars for credentials (wins if both are set).
+secret_access_key_env = "AWS_PROD_SECRET"
                                           # Pass it to the container via compose.yaml + .env.
 mode = "readOnly"

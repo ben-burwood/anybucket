@@ -12,10 +12,10 @@ use std::path::{Path, PathBuf};
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use argon2::Argon2;
-use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
-use rand::rngs::OsRng;
+use base64::engine::general_purpose::STANDARD as B64;
 use rand::RngCore;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 
 use anybucket_core::connections::SecretStore;
@@ -156,7 +156,8 @@ mod tests {
     // test runner.
     #[test]
     fn encrypt_round_trip_and_master_key_required() {
-        let dir = std::env::temp_dir().join(format!("anybucket-secret-test-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("anybucket-secret-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
 
         // Without the master key, the store refuses to build.

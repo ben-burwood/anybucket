@@ -6,12 +6,13 @@
 //! Access-mode gating (`require_writable` / `require_deletable`) stays with the
 //! caller — it needs the shell's locked [`crate::state::AppState`].
 
+use aws_sdk_s3::Client;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::CompletedPart;
-use aws_sdk_s3::Client;
 use aws_smithy_types::byte_stream::Length;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
+use crate::ProgressSink;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     BucketMetrics, CopyPrefix, CopyProgress, CopyTarget, DeleteProgress, DeleteTarget,
@@ -19,7 +20,6 @@ use crate::models::{
 };
 use crate::s3::progress_body::UploadReporter;
 use crate::s3::{metrics, ops};
-use crate::ProgressSink;
 
 /// Emit progress at most every 256 KiB to avoid flooding the transport.
 const PROGRESS_STEP: u64 = 256 * 1024;

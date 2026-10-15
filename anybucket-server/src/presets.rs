@@ -5,8 +5,9 @@
 //! This module parses that file into core [`Connection`]s plus an id→secret map, which
 //! [`anybucket_core::connections::ConnectionStore::from_presets`] consumes.
 //!
-//! Each `[[connections]]` entry may supply its secret inline (`secret_access_key`) or by referencing
-//! an environment variable (`secret_access_key_env`); the env reference wins when both are present.
+//! Each `[[connections]]` entry may supply its access key id and secret inline (`access_key_id`,
+//! `secret_access_key`) or by referencing an environment variable (`access_key_id_env`,
+//! `secret_access_key_env`); the env reference wins when both are present.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -32,7 +33,12 @@ struct PresetConnection {
     region: String,
     #[serde(default)]
     force_path_style: bool,
-    access_key_id: String,
+    /// Inline access key id. Optional if `access_key_id_env` is given.
+    #[serde(default)]
+    access_key_id: Option<String>,
+    /// Name of an environment variable holding the access key id. Wins over the inline value.
+    #[serde(default)]
+    access_key_id_env: Option<String>,
     /// Inline secret. Optional if `secret_access_key_env` is given.
     #[serde(default)]
     secret_access_key: Option<String>,
@@ -67,7 +73,20 @@ pub fn load(path: &Path) -> AppResult<Presets> {
     let mut secrets = HashMap::new();
 
     for preset in file.connections {
-        let secret = resolve_secret(&preset)?;
+        let access_key_id = resolve(
+            &preset.name,
+            "access_key_id",
+            "access key id",
+            preset.access_key_id.as_deref(),
+            preset.access_key_id_env.as_deref(),
+        )?;
+        let secret = resolve(
+            &preset.name,
+            "secret_access_key",
+            "secret",
+            preset.secret_access_key.as_deref(),
+            preset.secret_access_key_env.as_deref(),
+        )?;
         let id = format!("preset:{}", slug(&preset.name));
 
         if secrets.contains_key(&id) {
@@ -84,7 +103,7 @@ pub fn load(path: &Path) -> AppResult<Presets> {
             endpoint_url: preset.endpoint_url,
             region: preset.region,
             force_path_style: preset.force_path_style,
-            access_key_id: preset.access_key_id,
+            access_key_id,
             secret_access_key: secret.clone(),
             mode: preset.mode,
             admin: preset.admin,
@@ -101,24 +120,28 @@ pub fn load(path: &Path) -> AppResult<Presets> {
     })
 }
 
-/// Resolve the secret for a preset: env-var reference first, then inline value.
-fn resolve_secret(preset: &PresetConnection) -> AppResult<String> {
-    if let Some(var) = preset.secret_access_key_env.as_deref() {
+/// Resolve a credential (`field` / `{field}_env`) for a preset: env-var reference first, then inline value.
+fn resolve(
+    name: &str,
+    field: &str,
+    label: &str,
+    inline: Option<&str>,
+    env: Option<&str>,
+) -> AppResult<String> {
+    if let Some(var) = env {
         let var = var.trim();
         if !var.is_empty() {
             return std::env::var(var).map_err(|_| {
                 AppError::Config(format!(
-                    "connection '{}' references environment variable '{var}' for its secret, but it is not set",
-                    preset.name
+                    "connection '{name}' references environment variable '{var}' for its {label}, but it is not set"
                 ))
             });
         }
     }
-    match preset.secret_access_key.as_deref() {
+    match inline {
         Some(s) if !s.is_empty() => Ok(s.to_string()),
         _ => Err(AppError::Config(format!(
-            "connection '{}' has no secret: set 'secret_access_key' or 'secret_access_key_env'",
-            preset.name
+            "connection '{name}' has no {label}: set '{field}' or '{field}_env'"
         ))),
     }
 }
@@ -148,6 +171,7 @@ mod tests {
         // SAFETY: test-local env var; this test owns this unique key.
         unsafe {
             std::env::set_var("ANYBUCKET_TEST_PRESET_SECRET", "env-secret");
+            std::env::set_var("ANYBUCKET_TEST_PRESET_ACCESS_KEY", "env-access-key");
         }
         let toml = r#"
             [[connections]]
@@ -163,7 +187,7 @@ mod tests {
             [[connections]]
             name = "AWS Prod"
             region = "eu-west-1"
-            access_key_id = "AKIA..."
+            access_key_id_env = "ANYBUCKET_TEST_PRESET_ACCESS_KEY"
             secret_access_key_env = "ANYBUCKET_TEST_PRESET_SECRET"
         "#;
         let dir = std::env::temp_dir().join(format!("anybucket-presets-{}", std::process::id()));
@@ -184,6 +208,7 @@ mod tests {
         let aws = &presets.connections[1];
         assert_eq!(aws.id, "preset:aws-prod");
         assert_eq!(aws.endpoint_url, None);
+        assert_eq!(aws.access_key_id, "env-access-key"); // resolved from env
         assert_eq!(presets.secrets["preset:aws-prod"], "env-secret"); // resolved from env
 
         std::fs::remove_dir_all(&dir).ok();
@@ -204,7 +229,27 @@ mod tests {
             access_key_id = "b"
             secret_access_key = "s"
         "#;
-        let dir = std::env::temp_dir().join(format!("anybucket-presets-dup-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("anybucket-presets-dup-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("anybucket.toml");
+        std::fs::write(&path, toml).unwrap();
+
+        assert!(load(&path).is_err());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn missing_access_key_id_is_an_error() {
+        let toml = r#"
+            [[connections]]
+            name = "No Access Key"
+            region = "us-east-1"
+            secret_access_key = "s"
+        "#;
+        let dir =
+            std::env::temp_dir().join(format!("anybucket-presets-noak-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("anybucket.toml");
         std::fs::write(&path, toml).unwrap();
@@ -222,7 +267,8 @@ mod tests {
             region = "us-east-1"
             access_key_id = "a"
         "#;
-        let dir = std::env::temp_dir().join(format!("anybucket-presets-nosec-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("anybucket-presets-nosec-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("anybucket.toml");
         std::fs::write(&path, toml).unwrap();

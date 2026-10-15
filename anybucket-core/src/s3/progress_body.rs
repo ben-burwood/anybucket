@@ -10,8 +10,8 @@
 //! [`ByteStream`]: aws_sdk_s3::primitives::ByteStream
 
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 
 use aws_sdk_s3::primitives::ByteStream;
@@ -20,8 +20,8 @@ use bytes::Bytes;
 use http_body::{Body, Frame, SizeHint};
 use pin_project_lite::pin_project;
 
-use crate::models::UploadProgress;
 use crate::ProgressSink;
+use crate::models::UploadProgress;
 
 /// Tracks one upload's absolute byte progress and emits throttled events.
 /// Its [`wrap`](Self::wrap) turns any file-backed `ByteStream` into a counting one;

@@ -8,8 +8,8 @@
 
 use std::sync::Arc;
 
-use tauri::ipc::Channel;
 use tauri::State;
+use tauri::ipc::Channel;
 use tokio::sync::Mutex;
 
 use anybucket_core::connections::{Connection, ConnectionInput};
@@ -22,7 +22,7 @@ use anybucket_core::models::{
 };
 use anybucket_core::s3::{self, ops};
 use anybucket_core::state::AppState;
-use anybucket_core::{tasks, ProgressSink};
+use anybucket_core::{ProgressSink, tasks};
 
 type Shared<'a> = State<'a, Mutex<AppState>>;
 
