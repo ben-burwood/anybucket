@@ -40,10 +40,10 @@ pub async fn verify_connection(client: &Client, bucket: Option<&str>) -> AppResu
     Ok(())
 }
 
-/// List all buckets visible to the active credentials.
+/// List all buckets visible to the active credentials, sorted by name.
 pub async fn list_buckets(client: &Client) -> AppResult<Vec<Bucket>> {
     let out = client.list_buckets().send().await?;
-    let buckets = out
+    let mut buckets: Vec<Bucket> = out
         .buckets()
         .iter()
         .filter_map(|b| {
@@ -54,6 +54,7 @@ pub async fn list_buckets(client: &Client) -> AppResult<Vec<Bucket>> {
             })
         })
         .collect();
+    buckets.sort_by_cached_key(|b| b.name.to_lowercase());
     Ok(buckets)
 }
 
