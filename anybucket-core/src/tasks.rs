@@ -415,6 +415,47 @@ pub async fn delete_objects(
     result.map(|()| deleted)
 }
 
+/// Empty a bucket so it can be deleted: delete every object version and delete
+/// marker (or, where versions can't be listed, every current object), then abort
+/// incomplete multipart uploads.
+/// S3 has no native "empty bucket" call, so this is list-and-batch-delete.
+/// Streams a running deleted-count and a terminal `done`/`error` event; returns the total number deleted.
+pub async fn empty_bucket(
+    client: &Client,
+    bucket: &str,
+    on_progress: ProgressSink<DeleteProgress>,
+) -> AppResult<u64> {
+    let mut deleted: u64 = 0;
+    let result: AppResult<()> = async {
+        let mut on_batch = |n| {
+            deleted += n;
+            on_progress(DeleteProgress {
+                deleted,
+                done: false,
+                error: None,
+            });
+        };
+        // Versions first: deleting by version id removes data outright, whereas a
+        // plain delete on a versioned bucket would just add delete markers. The
+        // version listing also covers current objects (version `null` when unversioned).
+        if !ops::delete_all_versions(client, bucket, &mut on_batch).await? {
+            // Provider has no `ListObjectVersions`: fall back to a plain object sweep.
+            ops::delete_prefix(client, bucket, "", &mut on_batch).await?;
+        }
+        ops::abort_all_multipart_uploads(client, bucket).await
+    }
+    .await;
+
+    // Terminal event so the UI can settle its progress line either way.
+    let error = result.as_ref().err().map(|e| e.to_string());
+    on_progress(DeleteProgress {
+        deleted,
+        done: true,
+        error,
+    });
+    result.map(|()| deleted)
+}
+
 // ---------------------------------------------------------------------------
 // Copy / Move
 // ---------------------------------------------------------------------------

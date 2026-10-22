@@ -557,12 +557,7 @@ where
             .contents()
             .iter()
             .filter_map(|o| o.key())
-            .map(|k| {
-                ObjectIdentifier::builder()
-                    .key(k)
-                    .build()
-                    .map_err(|e| AppError::Delete(e.to_string()))
-            })
+            .map(|k| object_id(k, None))
             .collect::<AppResult<Vec<_>>>()?;
         if !ids.is_empty() {
             on_batch(delete_batch(client, bucket, ids).await?);
@@ -592,17 +587,128 @@ where
     for chunk in targets.chunks(DELETE_BATCH_SIZE) {
         let ids = chunk
             .iter()
-            .map(|(key, version_id)| {
-                ObjectIdentifier::builder()
-                    .key(key.clone())
-                    .set_version_id(version_id.clone())
-                    .build()
-                    .map_err(|e| AppError::Delete(e.to_string()))
-            })
+            .map(|(key, version_id)| object_id(key, version_id.as_deref()))
             .collect::<AppResult<Vec<_>>>()?;
         on_batch(delete_batch(client, bucket, ids).await?);
     }
     Ok(())
+}
+
+/// Delete every object version and delete marker in `bucket` (no prefix, no
+/// delimiter), paging `ListObjectVersions` and deleting each page as one batch.
+/// On an unversioned bucket this also catches any current objects (version `null`).
+/// `on_batch` receives each batch's deleted count (mirrors [`delete_prefix`]).
+///
+/// Returns `false` (having deleted nothing) when the provider doesn't implement
+/// `ListObjectVersions`, so the caller can fall back to a plain object sweep.
+pub async fn delete_all_versions<F>(
+    client: &Client,
+    bucket: &str,
+    mut on_batch: F,
+) -> AppResult<bool>
+where
+    F: FnMut(u64),
+{
+    let mut key_marker: Option<String> = None;
+    let mut version_marker: Option<String> = None;
+    loop {
+        let res = client
+            .list_object_versions()
+            .bucket(bucket)
+            .max_keys(DEFAULT_MAX_KEYS)
+            .set_key_marker(key_marker.clone())
+            .set_version_id_marker(version_marker.clone())
+            .send()
+            .await;
+        let out = match res {
+            Ok(out) => out,
+            Err(err) if key_marker.is_none() && is_not_implemented(&err) => return Ok(false),
+            Err(err) => return Err(err.into()),
+        };
+
+        let versions = out.versions().iter().map(|v| (v.key(), v.version_id()));
+        let markers = out
+            .delete_markers()
+            .iter()
+            .map(|m| (m.key(), m.version_id()));
+        let ids = versions
+            .chain(markers)
+            .filter_map(|(key, version_id)| Some(object_id(key?, version_id)))
+            .collect::<AppResult<Vec<_>>>()?;
+        if !ids.is_empty() {
+            on_batch(delete_batch(client, bucket, ids).await?);
+        }
+
+        if !out.is_truncated().unwrap_or(false) {
+            break;
+        }
+        key_marker = Some(next_marker(out.next_key_marker(), "ListObjectVersions")?);
+        version_marker = out.next_version_id_marker().map(str::to_string);
+    }
+    Ok(true)
+}
+
+/// Abort every incomplete multipart upload in `bucket` so no orphaned parts are
+/// left behind. Providers that don't implement `ListMultipartUploads` are
+/// treated as having none.
+pub async fn abort_all_multipart_uploads(client: &Client, bucket: &str) -> AppResult<()> {
+    let mut key_marker: Option<String> = None;
+    let mut upload_id_marker: Option<String> = None;
+    loop {
+        let res = client
+            .list_multipart_uploads()
+            .bucket(bucket)
+            .set_key_marker(key_marker.clone())
+            .set_upload_id_marker(upload_id_marker.clone())
+            .send()
+            .await;
+        let out = match res {
+            Ok(out) => out,
+            Err(err) if key_marker.is_none() && is_not_implemented(&err) => return Ok(()),
+            Err(err) => return Err(err.into()),
+        };
+
+        for upload in out.uploads() {
+            let (Some(key), Some(upload_id)) = (upload.key(), upload.upload_id()) else {
+                continue;
+            };
+            abort_multipart_upload(client, bucket, key, upload_id).await?;
+        }
+
+        if !out.is_truncated().unwrap_or(false) {
+            break;
+        }
+        key_marker = Some(next_marker(out.next_key_marker(), "ListMultipartUploads")?);
+        upload_id_marker = out.next_upload_id_marker().map(str::to_string);
+    }
+    Ok(())
+}
+
+/// One `DeleteObjects` identifier for `key`, optionally pinned to a version.
+fn object_id(key: &str, version_id: Option<&str>) -> AppResult<ObjectIdentifier> {
+    ObjectIdentifier::builder()
+        .key(key)
+        .set_version_id(version_id.map(str::to_string))
+        .build()
+        .map_err(|e| AppError::Delete(e.to_string()))
+}
+
+/// The key marker for the next page of a truncated `op` listing. A provider that
+/// reports truncation without one would otherwise end the sweep early and leave
+/// data behind while reporting success, so that's surfaced as an error.
+fn next_marker(marker: Option<&str>, op: &str) -> AppResult<String> {
+    marker
+        .map(str::to_string)
+        .ok_or_else(|| AppError::Other(format!("{op} reported more results but no next marker")))
+}
+
+/// Whether an S3 call failed because the provider doesn't implement the operation.
+fn is_not_implemented<E, R>(err: &aws_sdk_s3::error::SdkError<E, R>) -> bool
+where
+    E: aws_sdk_s3::error::ProvideErrorMetadata,
+{
+    err.as_service_error()
+        .is_some_and(|svc| svc.code() == Some("NotImplemented"))
 }
 
 // ---------------------------------------------------------------------------

@@ -2,13 +2,14 @@
 import { ref } from "vue";
 import { RouterLink } from "vue-router";
 import { useActiveBuckets } from "../composables/useActiveBuckets";
+import { useBucketMetrics } from "../store/useBucketMetrics";
 import * as s3 from "../api/s3";
-import { errorMessage, type Bucket } from "../types";
+import { errorMessage, isAppError, type Bucket } from "../types";
 import { formatDate } from "../utils/format";
 import ConfirmModal from "./ConfirmModal.vue";
 import CreateBucketModal from "./CreateBucketModal.vue";
 import RefreshButton from "./RefreshButton.vue";
-import { TrashIcon } from "@heroicons/vue/20/solid";
+import { ArchiveBoxXMarkIcon, TrashIcon } from "@heroicons/vue/20/solid";
 
 const {
   conns,
@@ -22,6 +23,7 @@ const {
   open,
   refresh,
 } = useActiveBuckets();
+const metricsCache = useBucketMetrics();
 
 // --- Create bucket ---------------------------------------------------------
 const createOpen = ref(false);
@@ -37,27 +39,82 @@ async function createBucket(name: string) {
   }
 }
 
+// --- Empty bucket ----------------------------------------------------------
+const emptyTarget = ref<Bucket | null>(null);
+const emptying = ref(false);
+const emptyError = ref<string | null>(null);
+const emptyProgress = ref<string | null>(null);
+
+function askEmpty(bucket: Bucket) {
+  emptyTarget.value = bucket;
+  emptyError.value = null;
+}
+
+/**
+ * Empty `bucket`, reporting a running deleted-count via `onText`, and drop its
+ * cached metrics afterwards (even after a partial failure).
+ */
+async function emptyBucket(bucket: string, onText: (text: string) => void) {
+  try {
+    await s3.emptyBucket(bucket, (p) =>
+      onText(p.done ? "Finishing…" : `Emptying… ${p.deleted.toLocaleString()} deleted`),
+    );
+  } finally {
+    metricsCache.invalidate(conns.state.active?.id, bucket);
+  }
+}
+
+async function confirmEmpty() {
+  if (!emptyTarget.value) return;
+  emptying.value = true;
+  emptyError.value = null;
+  emptyProgress.value = "Emptying…";
+  try {
+    await emptyBucket(emptyTarget.value.name, (t) => (emptyProgress.value = t));
+    emptyTarget.value = null;
+  } catch (e) {
+    emptyError.value = errorMessage(e);
+  } finally {
+    emptying.value = false;
+  }
+}
+
 // --- Delete bucket ---------------------------------------------------------
 const deleteTarget = ref<Bucket | null>(null);
 const deleting = ref(false);
 const deleteError = ref<string | null>(null);
+const deleteProgress = ref<string | null>(null);
+/** Empty the bucket before deleting it (needs a delete-capable connection). */
+const emptyFirst = ref(false);
+/** The last delete failed because the bucket isn't empty (highlights the option). */
+const notEmpty = ref(false);
 
 function askDelete(bucket: Bucket) {
   deleteTarget.value = bucket;
   deleteError.value = null;
   deleting.value = false;
+  emptyFirst.value = false;
+  notEmpty.value = false;
 }
 
 async function confirmDelete() {
   if (!deleteTarget.value) return;
+  const name = deleteTarget.value.name;
   deleting.value = true;
   deleteError.value = null;
+  deleteProgress.value = "Deleting…";
   try {
-    await s3.deleteBucket(deleteTarget.value.name);
+    if (emptyFirst.value) {
+      await emptyBucket(name, (t) => (deleteProgress.value = t));
+      deleteProgress.value = "Deleting…";
+    }
+    await s3.deleteBucket(name);
     deleteTarget.value = null;
     refresh();
   } catch (e) {
     deleteError.value = errorMessage(e);
+    // Point at the fix for the common failure, but never opt in on the user's behalf.
+    notEmpty.value = isAppError(e) && e.kind === "bucket_not_empty";
   } finally {
     deleting.value = false;
   }
@@ -161,6 +218,14 @@ async function confirmDelete() {
             b.name
           }}</span>
           <button
+            v-if="conns.canDelete.value"
+            class="shrink-0 rounded p-1 text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 dark:hover:bg-rose-950/40"
+            title="Empty bucket"
+            @click.stop="askEmpty(b)"
+          >
+            <ArchiveBoxXMarkIcon class="h-4 w-4" />
+          </button>
+          <button
             v-if="conns.canAdmin.value"
             class="shrink-0 rounded p-1 text-slate-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 dark:hover:bg-rose-950/40"
             title="Delete bucket"
@@ -189,12 +254,50 @@ async function confirmDelete() {
       :open="deleteTarget !== null"
       :title="`Delete bucket &quot;${deleteTarget?.name}&quot;?`"
       :busy="deleting"
-      :progress-text="deleting ? 'Deleting…' : null"
+      :progress-text="deleteProgress"
       :error="deleteError"
       confirm-label="Delete"
       danger
       @confirm="confirmDelete"
       @cancel="deleteTarget = null"
-    />
+    >
+      <label
+        v-if="conns.canDelete.value"
+        class="mt-3 flex items-start gap-2 rounded text-xs text-slate-600 dark:text-slate-300"
+        :class="{
+          'bg-amber-50 p-2 ring-1 ring-amber-300 dark:bg-amber-950/30 dark:ring-amber-800':
+            notEmpty && !emptyFirst,
+        }"
+      >
+        <input
+          v-model="emptyFirst"
+          type="checkbox"
+          class="mt-0.5 accent-rose-600"
+          :disabled="deleting"
+        />
+        <span>
+          Empty the bucket first — permanently deletes every object, version and
+          delete marker.
+        </span>
+      </label>
+    </ConfirmModal>
+
+    <ConfirmModal
+      :open="emptyTarget !== null"
+      :title="`Empty bucket &quot;${emptyTarget?.name}&quot;?`"
+      :busy="emptying"
+      :progress-text="emptyProgress"
+      :error="emptyError"
+      confirm-label="Empty"
+      danger
+      @confirm="confirmEmpty"
+      @cancel="emptyTarget = null"
+    >
+      <p class="mt-3 text-xs text-slate-600 dark:text-slate-300">
+        Permanently deletes every object, version and delete marker, and aborts
+        incomplete multipart uploads. The bucket itself is kept. This cannot be
+        undone.
+      </p>
+    </ConfirmModal>
   </div>
 </template>

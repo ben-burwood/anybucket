@@ -167,6 +167,21 @@ export function deleteObjects(
   });
 }
 
+/**
+ * Empty `bucket`: delete every object, version and delete marker, and abort
+ * incomplete multipart uploads (S3 has no native "empty" call). Fails unless the
+ * active connection is in read-write-delete mode. `onProgress` receives a running
+ * deleted-count and a terminal `done` event; resolves with the total deleted.
+ */
+export function emptyBucket(
+  bucket: string,
+  onProgress: (p: DeleteProgress) => void,
+): Promise<number> {
+  const channel = new Channel<DeleteProgress>();
+  channel.onmessage = onProgress;
+  return invoke("empty_bucket", { bucket, onProgress: channel });
+}
+
 /** One explicit object to copy/move: source key (+ optional version) → dst key. */
 export interface CopyTarget {
   key: string;

@@ -151,6 +151,12 @@ pub struct DeleteObjectsReq {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EmptyBucketReq {
+    pub bucket: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TransferObjectsReq {
     pub src_bucket: String,
     pub dst_bucket: String,
@@ -382,6 +388,18 @@ pub async fn delete_objects(
     let client = deletable_client(&state).await?;
     Ok(ndjson_response(move |sink| async move {
         tasks::delete_objects(&client, &req.bucket, req.objects, req.prefixes, sink).await
+    }))
+}
+
+/// Delete every object, version and delete marker in `bucket` (and abort its incomplete multipart uploads).
+/// Requires a delete-capable connection.
+pub async fn empty_bucket(
+    State(state): State<SharedState>,
+    Json(req): Json<EmptyBucketReq>,
+) -> Result<Response, ApiError> {
+    let client = deletable_client(&state).await?;
+    Ok(ndjson_response(move |sink| async move {
+        tasks::empty_bucket(&client, &req.bucket, sink).await
     }))
 }
 

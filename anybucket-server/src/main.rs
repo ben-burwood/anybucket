@@ -94,6 +94,7 @@ fn build_router(state: SharedState, config: &Config) -> Router {
         .route("/create_folder", post(handlers::create_folder))
         // Streaming (NDJSON progress)
         .route("/delete_objects", post(handlers::delete_objects))
+        .route("/empty_bucket", post(handlers::empty_bucket))
         .route("/transfer_objects", post(handlers::transfer_objects))
         .route("/scan_bucket_metrics", post(handlers::scan_bucket_metrics))
         // Raw-body upload + streamed download (browser filesystem reroute)

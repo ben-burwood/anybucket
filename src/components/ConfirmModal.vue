@@ -71,6 +71,8 @@ watch(
           </li>
         </ul>
 
+        <slot />
+
         <p
           v-if="error"
           class="mt-3 text-xs text-rose-600 dark:text-rose-400"

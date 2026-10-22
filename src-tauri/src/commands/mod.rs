@@ -296,6 +296,19 @@ pub async fn delete_objects(
     tasks::delete_objects(&client, &bucket, objects, prefixes, sink).await
 }
 
+/// Delete every object, version and delete marker in `bucket` (and abort its
+/// incomplete multipart uploads). Fails unless the active connection permits deletes.
+#[tauri::command]
+pub async fn empty_bucket(
+    bucket: String,
+    on_progress: Channel<DeleteProgress>,
+    state: Shared<'_>,
+) -> AppResult<u64> {
+    let client = deletable_client(&state).await?;
+    let sink = channel_sink(on_progress);
+    tasks::empty_bucket(&client, &bucket, sink).await
+}
+
 // ---------------------------------------------------------------------------
 // Copy / Move
 // ---------------------------------------------------------------------------
