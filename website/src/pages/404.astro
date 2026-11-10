@@ -1,0 +1,20 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Footer from '../components/Footer.astro';
+import { asset } from '../consts';
+---
+
+<Layout title="Page not found — AnyBucket" noindex>
+  <main class="mx-auto flex min-h-[70vh] max-w-xl flex-col items-center justify-center px-5 text-center">
+    <img src={asset('/bucket.svg')} alt="" width="64" height="64" class="h-16 w-16" />
+    <h1 class="mt-6 text-3xl font-bold tracking-tight sm:text-4xl">This bucket is empty</h1>
+    <p class="mt-4 text-lg text-ink-muted">The page you're looking for doesn't exist or has moved.</p>
+    <a
+      href={asset('/')}
+      class="mt-8 inline-flex items-center gap-2 rounded-lg bg-brand-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-600"
+    >
+      Back to AnyBucket
+    </a>
+  </main>
+  <Footer />
+</Layout>

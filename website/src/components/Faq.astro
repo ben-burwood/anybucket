@@ -1,0 +1,54 @@
+---
+import { Icon } from 'astro-icon/components';
+
+const faqs = [
+  {
+    q: 'Does AnyBucket work with MinIO, Garage and RustFS?',
+    a: 'Yes. AnyBucket is a GUI for AWS S3 and any S3-compatible object store — point a connection at your MinIO, Garage or RustFS endpoint and enable path-style addressing if your server needs it.',
+  },
+  {
+    q: 'Which platforms does the desktop app support?',
+    a: 'Windows 10 & 11 (x64, also via WinGet), macOS on Apple Silicon, and Linux (x64 AppImage and .deb). The self-hosted Docker image runs on linux/amd64 and linux/arm64.',
+  },
+  {
+    q: 'Is there a web version I can self-host?',
+    a: 'Yes. The same UI runs as a self-hosted S3 web interface in a single Docker container, with all S3 operations performed server-side. It has no built-in auth, so run it behind a reverse proxy that provides authentication and TLS.',
+  },
+  {
+    q: 'Where are my S3 access keys stored?',
+    a: 'In the desktop app, secret keys live in your OS keychain. In the self-hosted web app, they are AES-256-GCM encrypted at rest under a master key you provide.',
+  },
+  {
+    q: 'Can I prevent accidental deletes?',
+    a: 'Each connection has an access mode — read-only, read-write, or read-write-delete — enforced in the Rust backend, not just hidden in the UI.',
+  },
+  {
+    q: 'Is AnyBucket free?',
+    a: 'Yes. AnyBucket is free and open source under the MIT License.',
+  },
+];
+---
+
+<section id="faq" class="scroll-mt-20 border-t border-night-800 py-20">
+  <div class="mx-auto max-w-3xl px-5">
+    <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl">Frequently asked questions</h2>
+
+    <div class="mt-12 space-y-3">
+      {faqs.map((f) => (
+        <details class="group rounded-xl border border-night-700 bg-night-900 px-5 py-4 open:bg-night-850">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold [&::-webkit-details-marker]:hidden">
+            <h3>{f.q}</h3>
+            <Icon
+              name="heroicons:chevron-down-20-solid"
+              width="20"
+              height="20"
+              aria-hidden="true"
+              class="shrink-0 text-ink-faint transition group-open:rotate-180"
+            />
+          </summary>
+          <p class="mt-3 text-sm leading-relaxed text-ink-muted">{f.a}</p>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>

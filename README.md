@@ -1,6 +1,10 @@
 # AnyBucket
 
-Explorer for **S3-compatible object stores** — AWS S3, [RustFS](https://rustfs.com/), [Garage](https://garagehq.deuxfleurs.fr/)... 
+https://ben-burwood.github.io/anybucket/
+
+Explorer **S3 GUI** for AWS S3 and any **S3-compatible object store** — [MinIO](https://min.io/), [Garage](https://garagehq.deuxfleurs.fr/), [RustFS](https://rustfs.com/)...
+
+Runs as a native desktop app on **Windows, macOS and Linux**, or self-hosted as a web app in a single Docker container.
 
 Built with **Tauri + Vue**, using [`aws-sdk-s3`](https://docs.rs/aws-sdk-s3/latest/aws_sdk_s3/) and [`ag-grid`](https://www.ag-grid.com/).
 

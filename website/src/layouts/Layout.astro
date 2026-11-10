@@ -1,19 +1,41 @@
 ---
 import '../styles/global.css';
-import { asset } from '../consts';
+import interWoff2 from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
+import { REPO_URL, RELEASES_URL, LICENSE_URL, asset } from '../consts';
 
 interface Props {
   title?: string;
   description?: string;
+  /** Keep the page out of search results (e.g. the 404 page). */
+  noindex?: boolean;
 }
 
 const {
   title = 'AnyBucket — Explorer for S3-compatible object stores',
-  description = 'A fast explorer for AWS S3 and any S3-compatible object store — RustFS, Garage, MinIO and more. Run it as a native desktop app or self-host as a single Docker container. Browse buckets, manage objects, upload and download with live progress.',
+  description = 'Free, open-source S3 GUI for AWS S3, MinIO, Garage and RustFS. A native desktop app for Windows, macOS and Linux, or self-host it with Docker.',
+  noindex = false,
 } = Astro.props;
 
-const logo = asset('/bucket.svg');
-const social = new URL(logo, Astro.site ?? 'https://ben-burwood.github.io');
+const site = Astro.site ?? 'https://ben-burwood.github.io';
+// GitHub Pages redirects `/anybucket` → `/anybucket/`, so canonicalise to the trailing-slash form.
+const canonical = new URL(Astro.url.pathname.replace(/\/?$/, '/'), site).href;
+const ogImage = new URL(asset('/og.png'), site).href;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'AnyBucket',
+  description,
+  url: canonical,
+  image: ogImage,
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'Windows, macOS, Linux',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  license: LICENSE_URL,
+  downloadUrl: RELEASES_URL,
+  sameAs: [REPO_URL],
+  author: { '@type': 'Person', name: 'Ben Burwood' },
+};
 ---
 
 <!doctype html>
@@ -22,21 +44,34 @@ const social = new URL(logo, Astro.site ?? 'https://ben-burwood.github.io');
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="generator" content={Astro.generator} />
-    <link rel="icon" type="image/svg+xml" href={logo} />
+    <link rel="icon" type="image/svg+xml" href={asset('/bucket.svg')} />
+    <link rel="icon" type="image/png" sizes="96x96" href={asset('/favicon-96x96.png')} />
+    <link rel="apple-touch-icon" href={asset('/apple-touch-icon.png')} />
+    <link rel="preload" href={interWoff2} as="font" type="font/woff2" crossorigin />
 
     <title>{title}</title>
     <meta name="description" content={description} />
     <meta name="theme-color" content="#16a34a" />
+    {noindex ? <meta name="robots" content="noindex" /> : <link rel="canonical" href={canonical} />}
 
     <!-- Open Graph / social -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AnyBucket" />
+    <meta property="og:locale" content="en_GB" />
+    <meta property="og:url" content={canonical} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content={social.href} />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="AnyBucket — the S3 GUI for any object store" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={social.href} />
+    <meta name="twitter:image" content={ogImage} />
+
+    {!noindex && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
   </head>
   <body class="bg-night-950 text-ink">
     <slot />

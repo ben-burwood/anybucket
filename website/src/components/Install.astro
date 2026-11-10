@@ -43,7 +43,8 @@ const icons: Record<string, string> = {
     <div class="mx-auto max-w-2xl text-center">
       <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">Install AnyBucket</h2>
       <p class="mt-4 text-lg text-ink-muted">
-        Free and open source. Available as a native application or Docker image for web deployment —
+        Free and open source. A native app for Windows, macOS and Linux, or a Docker image for a
+        self-hosted S3 web UI —
         <span id="install-version" class="text-ink">the latest version</span>.
       </p>
     </div>
@@ -64,7 +65,7 @@ const icons: Record<string, string> = {
           <div class="flex items-center gap-3">
             <Icon name={icons[p.id]} width="26" height="26" aria-hidden="true" class="text-ink" />
             <div>
-              <h3 class="font-semibold">{p.name}</h3>
+              <h4 class="font-semibold">{p.name}</h4>
               <p class="text-xs text-ink-faint">{p.note}</p>
             </div>
           </div>
@@ -128,7 +129,7 @@ const icons: Record<string, string> = {
           <Icon name="heroicons:server-solid" width="24" height="24" aria-hidden="true" />
         </div>
         <div>
-          <h4 class="font-semibold">Run the same UI as a single container</h4>
+          <h4 class="font-semibold">A self-hosted S3 web interface in a single container</h4>
           <p class="mt-1.5 text-sm leading-relaxed text-ink-muted">
             An <span class="text-ink">axum</span> server serves the SPA and performs all S3
             operations server-side — the browser never talks to S3 directly. Published to the GitHub

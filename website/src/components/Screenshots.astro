@@ -15,7 +15,7 @@ import { Icon } from 'astro-icon/components';
   <div class="mt-12 grid gap-5 lg:grid-cols-3">
     <!-- Connections -->
     <figure class="overflow-hidden rounded-xl border border-night-700 bg-night-900">
-      <div class="border-b border-night-700 px-4 py-3 text-sm font-medium">Connections</div>
+      <figcaption class="border-b border-night-700 px-4 py-3 text-sm font-medium">Connections</figcaption>
       <div class="space-y-3 p-4 text-xs">
         <div>
           <div class="mb-1 text-ink-faint">Name</div>
@@ -52,7 +52,7 @@ import { Icon } from 'astro-icon/components';
 
     <!-- Upload progress -->
     <figure class="overflow-hidden rounded-xl border border-night-700 bg-night-900">
-      <div class="border-b border-night-700 px-4 py-3 text-sm font-medium">Live transfer progress</div>
+      <figcaption class="border-b border-night-700 px-4 py-3 text-sm font-medium">Live transfer progress</figcaption>
       <div class="space-y-3 p-4 text-xs">
         {[
           { name: 'archive-2025.tar.zst', pct: 72, note: '936 MB / 1.3 GB' },
@@ -74,7 +74,7 @@ import { Icon } from 'astro-icon/components';
 
     <!-- Object detail -->
     <figure class="overflow-hidden rounded-xl border border-night-700 bg-night-900">
-      <div class="border-b border-night-700 px-4 py-3 text-sm font-medium">Object detail</div>
+      <figcaption class="border-b border-night-700 px-4 py-3 text-sm font-medium">Object detail</figcaption>
       <div class="p-4 text-xs">
         <div class="flex items-center gap-2 border-b border-night-800 pb-3">
           <Icon name="heroicons:document-16-solid" width="18" height="18" aria-hidden="true" class="text-ink-faint" />
